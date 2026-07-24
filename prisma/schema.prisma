@@ -1,0 +1,60 @@
+// Prisma schema for the PBR Ops Tool.
+// This DB holds only the metadata Jira doesn't: priority order within
+// PBR, assignments (one or many people), per-person read/done state,
+// and threaded questions/comments. Jira remains the source of truth
+// for the story content and status itself.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum StoryStage {
+  BACKLOG      // pulled in, not yet assigned for review
+  ASSIGNED     // handed to one or more reviewers
+  IN_REVIEW    // at least one reviewer has marked done, not all
+  PBR_DONE     // discussed in PBR session, Jira transitioned to Ready for Dev
+}
+
+model Story {
+  id            String     @id @default(cuid())
+  jiraKey       String     @unique // e.g. RAE-1234
+  priorityOrder Int        @default(0) // lower = higher priority, set by PO drag/reorder
+  stage         StoryStage @default(BACKLOG)
+  pbrDoneAt     DateTime?
+
+  assignees Assignee[]
+  comments  Comment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([priorityOrder])
+}
+
+model Assignee {
+  id         String   @id @default(cuid())
+  storyId    String
+  story      Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  name       String
+  email      String
+  markedDone Boolean  @default(false)
+  markedDoneAt DateTime?
+  createdAt  DateTime @default(now())
+
+  @@unique([storyId, email])
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  storyId   String
+  story     Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  author    String
+  text      String
+  isQuestion Boolean @default(false)
+  createdAt DateTime @default(now())
+}
