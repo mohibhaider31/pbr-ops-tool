@@ -71,18 +71,21 @@ export function clearSessionCookie() {
 }
 
 // Attach the session cookie directly onto a response object. Required when
-// redirecting from a route handler: cookies set via the cookies() helper
-// don't reliably attach to a NextResponse.redirect(), so the callback sets
-// it on the response it returns instead.
+// redirecting from a route handler. Uses an explicit Set-Cookie header
+// (via headers.append) rather than res.cookies.set(), because in Next 14
+// route handlers the latter does not always serialize onto the outgoing
+// response — the raw header approach is reliable.
 export async function attachSessionCookie(res: any, session: Session) {
   const token = await encodeSession(session);
-  res.cookies.set(COOKIE_NAME, token, {
-    httpOnly: true,
-    secure: true,
-    sameSite: "lax",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 30,
-  });
+  const cookie = [
+    `${COOKIE_NAME}=${token}`,
+    "Path=/",
+    `Max-Age=${60 * 60 * 24 * 30}`,
+    "HttpOnly",
+    "Secure",
+    "SameSite=Lax",
+  ].join("; ");
+  res.headers.append("Set-Cookie", cookie);
   return res;
 }
 
