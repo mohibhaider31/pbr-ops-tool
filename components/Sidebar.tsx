@@ -8,7 +8,7 @@ const NAV = [
   { label: "Backlog", href: "/", soon: false },
   { label: "Pipeline", href: "/pipeline", soon: false },
   { label: "Poker", href: "#", soon: true },
-  { label: "Settings", href: "#", soon: true },
+  { label: "Settings", href: "/settings", soon: false },
 ];
 
 function initialsOf(name: string) {
@@ -19,14 +19,26 @@ function initialsOf(name: string) {
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const [user, setUser] = useState<{ name: string; email: string | null } | null>(null);
+  const [user, setUser] = useState<{ name: string; email: string | null; role?: string; isAdmin?: boolean } | null>(null);
 
   useEffect(() => {
-    fetch("/api/auth/me")
+    fetch("/api/viewer")
       .then((r) => r.json())
-      .then((d) => setUser(d.user))
+      .then((d) => setUser(d.viewer))
       .catch(() => setUser(null));
   }, []);
+
+  const roleLabel = user?.isAdmin
+    ? "Admin"
+    : user?.role === "PO"
+    ? "Product Owner"
+    : user?.role === "BA"
+    ? "Business Analyst"
+    : user?.role === "DEVELOPER"
+    ? "Developer"
+    : user?.role === "VIEWER"
+    ? "Viewer"
+    : "";
 
   return (
     <aside className="w-[220px] flex-none bg-rail text-railText flex flex-col justify-between py-[18px]">
@@ -51,7 +63,7 @@ export default function Sidebar() {
         </div>
 
         <nav className="flex flex-col gap-[2px]">
-          {NAV.map((item) => {
+          {NAV.filter((item) => item.label !== "Settings" || user?.isAdmin).map((item) => {
             const active = item.href === pathname;
             return (
               <Link
@@ -91,7 +103,7 @@ export default function Sidebar() {
               {user ? user.name : "Signing in…"}
             </span>
             <span className="text-[10px] text-railMuted2 overflow-hidden text-ellipsis whitespace-nowrap">
-              {user?.email || ""}
+              {roleLabel}
             </span>
           </span>
           <a

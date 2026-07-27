@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import { avatarColor, initials } from "@/lib/avatar";
 import Toast from "./Toast";
 import AddStoriesModal from "./AddStoriesModal";
+import { useViewer } from "@/lib/useViewer";
 
 type LayerStatus = "NOT_STARTED" | "IN_PROGRESS" | "DONE" | "BLOCKED";
 type Layer = "ENGINE" | "MIDDLEWARE" | "FRONTEND";
@@ -48,6 +49,7 @@ const HANDOFF_META: Record<string, { label: string; cls: string }> = {
 };
 
 export default function PipelineBoard() {
+  const { can } = useViewer();
   const [rows, setRows] = useState<Row[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -76,6 +78,7 @@ export default function PipelineBoard() {
   };
 
   const cycleStatus = async (row: Row, cell: LayerCell) => {
+    if (!can("pipeline_edit")) return;
     const next = STATUS_ORDER[(STATUS_ORDER.indexOf(cell.status) + 1) % STATUS_ORDER.length];
     setRows(
       (prev) =>
@@ -95,6 +98,7 @@ export default function PipelineBoard() {
   };
 
   const setOwner = async (row: Row, cell: LayerCell) => {
+    if (!can("pipeline_edit")) return;
     const owner = window.prompt(`Owner for ${row.jiraKey} · ${LAYER_LABEL[cell.layer]}`, cell.owner || "");
     if (owner === null) return;
     await fetch(`/api/pipeline/${row.jiraKey}/${cell.layer}`, {
@@ -106,6 +110,7 @@ export default function PipelineBoard() {
   };
 
   const setSprint = async (row: Row, cell: LayerCell) => {
+    if (!can("pipeline_edit")) return;
     const sprint = window.prompt(
       `Sprint for ${row.jiraKey} · ${LAYER_LABEL[cell.layer]}\n(e.g. "Sprint 14" — shown as the sprint this layer's work completed in)`,
       cell.sprint || ""
@@ -120,6 +125,7 @@ export default function PipelineBoard() {
   };
 
   const removeMember = async (row: Row) => {
+    if (!can("pipeline_edit")) return;
     if (!window.confirm(`Remove ${row.jiraKey} from the pipeline? Layer statuses are kept if you re-add it.`)) return;
     await fetch(`/api/pipeline/member/${row.jiraKey}`, { method: "DELETE" });
     showToast(`${row.jiraKey} removed from pipeline`);
@@ -168,12 +174,14 @@ export default function PipelineBoard() {
               {onlyStalls ? "Showing needs-attention" : "Show needs-attention"}
             </button>
           )}
-          <button
-            onClick={() => setAddOpen(true)}
-            className="h-[38px] px-4 text-[13px] font-semibold bg-ink text-white hover:bg-[#2E2B25] transition-colors"
-          >
-            + Add stories
-          </button>
+          {can("pipeline_edit") && (
+            <button
+              onClick={() => setAddOpen(true)}
+              className="h-[38px] px-4 text-[13px] font-semibold bg-ink text-white hover:bg-[#2E2B25] transition-colors"
+            >
+              + Add stories
+            </button>
+          )}
         </div>
       </header>
 

@@ -6,10 +6,12 @@ import { STAGE_META } from "@/lib/stage";
 import { avatarColor, initials } from "@/lib/avatar";
 import StoryDrawer from "./StoryDrawer";
 import Toast from "./Toast";
+import { useViewer } from "@/lib/useViewer";
 
 type Filter = "all" | "unassigned" | "assigned" | "in_review" | "questions" | "done";
 
 export default function BacklogBoard() {
+  const { can } = useViewer();
   const [stories, setStories] = useState<Story[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -86,6 +88,7 @@ export default function BacklogBoard() {
   }, [stories]);
 
   const reorder = async (fromKey: string, toKey: string) => {
+    if (!can("prioritize")) return;
     if (!stories || fromKey === toKey) return;
     const fromIdx = stories.findIndex((s) => s.jiraKey === fromKey);
     const toIdx = stories.findIndex((s) => s.jiraKey === toKey);
@@ -210,7 +213,7 @@ export default function BacklogBoard() {
           return (
             <div
               key={story.jiraKey}
-              draggable
+              draggable={can("prioritize")}
               onDragStart={() => setDragKey(story.jiraKey)}
               onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => {
@@ -224,7 +227,7 @@ export default function BacklogBoard() {
               style={{ gridTemplateColumns: "46px 64px minmax(160px,1fr) 34px 112px 34px 130px" }}
             >
               <div className="flex items-center gap-[7px]">
-                <span className="text-muted4 text-[13px] cursor-grab select-none">⠿</span>
+                {can("prioritize") && <span className="text-muted4 text-[13px] cursor-grab select-none">⠿</span>}
                 <span className="font-mono text-[11px] text-muted4">{idx + 1}</span>
               </div>
               <span className="font-mono text-[12px] font-medium text-key">{story.jiraKey}</span>

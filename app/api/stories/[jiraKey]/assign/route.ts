@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireCap } from "@/lib/guard";
 
 export async function POST(
   req: Request,
   { params }: { params: { jiraKey: string } }
 ) {
+  const denied = await requireCap("assign");
+  if (denied) return denied;
   try {
     const { assignees }: { assignees: { name: string; email: string }[] } =
       await req.json();
@@ -37,6 +40,8 @@ export async function PATCH(
   req: Request,
   { params }: { params: { jiraKey: string } }
 ) {
+  const denied = await requireCap("review");
+  if (denied) return denied;
   try {
     const { email }: { email: string } = await req.json();
     const story = await prisma.story.findUnique({

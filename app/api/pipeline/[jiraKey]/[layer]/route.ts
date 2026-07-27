@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireCap } from "@/lib/guard";
 
 const VALID_LAYERS = ["ENGINE", "MIDDLEWARE", "FRONTEND"];
 const VALID_STATUSES = ["NOT_STARTED", "IN_PROGRESS", "DONE", "BLOCKED"];
@@ -10,6 +11,8 @@ export async function PATCH(
   req: Request,
   { params }: { params: { jiraKey: string; layer: string } }
 ) {
+  const denied = await requireCap("pipeline_edit");
+  if (denied) return denied;
   try {
     const layer = params.layer.toUpperCase();
     if (!VALID_LAYERS.includes(layer))

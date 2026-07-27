@@ -5,6 +5,7 @@ import type { Story } from "@/lib/types";
 import { STAGE_META } from "@/lib/stage";
 import { avatarColor, initials } from "@/lib/avatar";
 import Runner from "./Runner";
+import { useViewer } from "@/lib/useViewer";
 
 export default function StoryDrawer({
   story,
@@ -17,6 +18,7 @@ export default function StoryDrawer({
   onChanged: () => void;
   onToast: (msg: string) => void;
 }) {
+  const { can } = useViewer();
   const [assigneeInput, setAssigneeInput] = useState("");
   const [addOpen, setAddOpen] = useState(false);
   const [draft, setDraft] = useState("");
@@ -139,12 +141,14 @@ export default function StoryDrawer({
               <span className="font-mono text-[9.5px] tracking-[.11em] text-muted2">
                 REVIEWERS · {doneCount}/{story.assignees.length}
               </span>
-              <button
-                onClick={() => setAddOpen(!addOpen)}
-                className="bg-transparent border-none text-[12px] font-medium text-key cursor-pointer p-0"
-              >
-                + Assign
-              </button>
+              {can("assign") && (
+                <button
+                  onClick={() => setAddOpen(!addOpen)}
+                  className="bg-transparent border-none text-[12px] font-medium text-key cursor-pointer p-0"
+                >
+                  + Assign
+                </button>
+              )}
             </div>
 
             {addOpen && (
@@ -236,6 +240,8 @@ export default function StoryDrawer({
               <span className="text-[12px] text-muted3">No comments yet</span>
             )}
 
+            {can("review") ? (
+            <>
             <textarea
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
@@ -273,6 +279,10 @@ export default function StoryDrawer({
                 </button>
               </div>
             </div>
+            </>
+            ) : (
+              <p className="m-0 text-[12px] text-muted3">You have read-only access to this story.</p>
+            )}
           </div>
         </div>
 
@@ -285,7 +295,7 @@ export default function StoryDrawer({
               : "Waiting on reviewers to mark done."}
           </span>
           <div className="flex-1" />
-          {story.stage !== "PBR_DONE" && (
+          {story.stage !== "PBR_DONE" && can("pbr_send") && (
             <button
               disabled={busy || pbrPath.length === 0}
               onClick={() => setRunnerOpen(true)}

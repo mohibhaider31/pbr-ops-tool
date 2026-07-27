@@ -203,3 +203,37 @@ export async function fetchActiveStories(): Promise<JiraIssue[]> {
 
   return issues.map(mapIssue);
 }
+
+// --- People: fetch assignable users on the project (for role management) ---
+// Uses the user-assignable-users endpoint scoped to the project. Requires a
+// user OAuth token (read:jira-user via read:me won't cover this; falls back
+// to service token which can read project users).
+export type JiraUser = { accountId: string; name: string; email: string | null; avatarUrl: string | null };
+
+export async function fetchProjectMembers(auth?: JiraAuth): Promise<JiraUser[]> {
+  // assignable users search for the project; paginate through results.
+  const users: any[] = [];
+  let startAt = 0;
+  const maxResults = 100;
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const data = await jiraFetch(
+      `/rest/api/3/user/assignable/search?project=${JIRA_PROJECT_KEY}&startAt=${startAt}&maxResults=${maxResults}`,
+      undefined,
+      auth
+    );
+    const batch = Array.isArray(data) ? data : [];
+    users.push(...batch);
+    if (batch.length < maxResults) break;
+    startAt += maxResults;
+    if (startAt > 1000) break; // safety
+  }
+  return users
+    .filter((u) => u.accountType === "atlassian") // real people, not apps
+    .map((u) => ({
+      accountId: u.accountId,
+      name: u.displayName,
+      email: u.emailAddress ?? null,
+      avatarUrl: u.avatarUrls?.["48x48"] ?? null,
+    }));
+}

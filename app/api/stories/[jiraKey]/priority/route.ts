@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireCap } from "@/lib/guard";
 
 // Moves a story to a new priorityOrder position and shifts everything
 // between the old and new spot by one. Simple approach: since backlogs
@@ -9,6 +10,8 @@ export async function PATCH(
   req: Request,
   { params }: { params: { jiraKey: string } }
 ) {
+  const denied = await requireCap("prioritize");
+  if (denied) return denied;
   try {
     const { newOrder }: { newOrder: number } = await req.json();
 
