@@ -76,7 +76,7 @@ export async function GET() {
       }))
       .filter((g) => g.items.length > 0);
 
-    return NextResponse.json({ groups, totalOwed });
+    return NextResponse.json({ groups, totalOwed, _debug: { members: members.length, tracks: tracks.length, memberKeys } });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
