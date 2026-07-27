@@ -19,6 +19,8 @@ export async function GET() {
       role: p.role,
       isAdmin: p.isAdmin,
       source: p.source,
+      active: !!p.firstLoginAt, // has logged into the tool at least once
+      firstLoginAt: p.firstLoginAt ? p.firstLoginAt.toISOString() : null,
     })),
   });
 }

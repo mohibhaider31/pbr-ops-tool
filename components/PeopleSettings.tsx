@@ -15,6 +15,8 @@ type Person = {
   role: BoardRole;
   isAdmin: boolean;
   source: string;
+  active: boolean;
+  firstLoginAt: string | null;
 };
 
 const ROLES: BoardRole[] = ["PO", "BA", "DEVELOPER", "VIEWER"];
@@ -127,6 +129,16 @@ export default function PeopleSettings() {
           <p className="m-0 text-[12.5px] text-muted">
             Assign roles that control what each person can do. Sync pulls members from Jira; new people start as Developer.
           </p>
+          {people && (
+            <div className="flex items-center gap-4 mt-1">
+              <span className="font-mono text-[11px] text-muted2">
+                <span className="text-good font-semibold">{people.filter((p) => p.active).length}</span> active
+              </span>
+              <span className="font-mono text-[11px] text-muted2">
+                <span className="text-amberText font-semibold">{people.filter((p) => !p.active).length}</span> invited, not yet signed in
+              </span>
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-[10px]">
           <button
@@ -182,10 +194,11 @@ export default function PeopleSettings() {
           <>
             <div
               className="grid gap-0 px-[30px] items-center h-[34px] border-b border-borderLight sticky top-0 bg-paper z-[2]"
-              style={{ gridTemplateColumns: "minmax(200px,1fr) 150px 90px 90px 40px" }}
+              style={{ gridTemplateColumns: "minmax(200px,1fr) 130px 110px 80px 80px 40px" }}
             >
               <span className="font-mono text-[9.5px] tracking-[.11em] text-muted3">PERSON</span>
               <span className="font-mono text-[9.5px] tracking-[.11em] text-muted3">ROLE</span>
+              <span className="font-mono text-[9.5px] tracking-[.11em] text-muted3">STATUS</span>
               <span className="font-mono text-[9.5px] tracking-[.11em] text-muted3 text-center">ADMIN</span>
               <span className="font-mono text-[9.5px] tracking-[.11em] text-muted3 text-center">SOURCE</span>
               <span></span>
@@ -194,7 +207,7 @@ export default function PeopleSettings() {
               <div
                 key={p.id}
                 className="group grid gap-0 px-[30px] items-center h-[54px] border-b border-borderLight hover:bg-cream transition-colors"
-                style={{ gridTemplateColumns: "minmax(200px,1fr) 150px 90px 90px 40px" }}
+                style={{ gridTemplateColumns: "minmax(200px,1fr) 130px 110px 80px 80px 40px" }}
               >
                 <div className="flex items-center gap-[10px] min-w-0">
                   <span
@@ -224,6 +237,25 @@ export default function PeopleSettings() {
                       </option>
                     ))}
                   </select>
+                </div>
+                <div>
+                  {p.active ? (
+                    <span
+                      className="inline-flex items-center gap-[6px] font-mono text-[10px] tracking-[.04em] text-good border border-good/40 px-[8px] py-[3px]"
+                      title={p.firstLoginAt ? `First signed in ${new Date(p.firstLoginAt).toLocaleDateString()}` : "Active"}
+                    >
+                      <span className="w-[6px] h-[6px] rounded-full bg-good inline-block" />
+                      ACTIVE
+                    </span>
+                  ) : (
+                    <span
+                      className="inline-flex items-center gap-[6px] font-mono text-[10px] tracking-[.04em] text-amberText border border-amberBorder bg-amberBg px-[8px] py-[3px]"
+                      title="Invited but hasn't signed in yet"
+                    >
+                      <span className="w-[6px] h-[6px] rounded-full bg-amberText inline-block" />
+                      INVITED
+                    </span>
+                  )}
                 </div>
                 <div className="flex justify-center">
                   <button

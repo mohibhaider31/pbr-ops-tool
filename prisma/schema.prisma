@@ -138,16 +138,17 @@ enum BoardRole {
 }
 
 model Person {
-  id        String    @id @default(cuid())
-  accountId String?   @unique // Atlassian account id; null until they first log in (manual adds)
-  email     String?   @unique
-  name      String
-  avatarUrl String?
-  role      BoardRole @default(DEVELOPER)
-  isAdmin   Boolean   @default(false)
-  source    String    @default("jira") // "jira" | "manual"
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id          String    @id @default(cuid())
+  accountId   String?   @unique // Atlassian account id; null until they first log in (manual adds)
+  email       String?   @unique
+  name        String
+  avatarUrl   String?
+  role        BoardRole @default(DEVELOPER)
+  isAdmin     Boolean   @default(false)
+  source      String    @default("jira") // "jira" | "manual"
+  firstLoginAt DateTime? // set on the person's first real login to the tool; null = invited but never used
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 }
 
 // --- Planning Poker ---

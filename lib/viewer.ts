@@ -52,7 +52,18 @@ export async function getViewer(): Promise<Viewer | null> {
         role: isSeed ? "PO" : "DEVELOPER",
         isAdmin: !!isSeed,
         source: "jira",
+        firstLoginAt: new Date(), // created during an authenticated request = first login
       },
+    });
+  }
+
+  // Stamp first login for anyone resolved here who hasn't been marked yet
+  // (e.g. a Jira-synced or manually-added person logging in for the first
+  // time). This is the "has started using the tool" flag.
+  if (!person.firstLoginAt) {
+    person = await prisma.person.update({
+      where: { id: person.id },
+      data: { firstLoginAt: new Date() },
     });
   }
 
