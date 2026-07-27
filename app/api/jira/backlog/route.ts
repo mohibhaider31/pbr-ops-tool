@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { fetchBacklog } from "@/lib/jira";
 import { prisma } from "@/lib/prisma";
