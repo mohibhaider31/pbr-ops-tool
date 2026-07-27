@@ -21,9 +21,10 @@ export function pokerChannel(code: string) {
   return `poker-${code}`;
 }
 export const POKER_EVENTS = {
-  voteUpdate: "vote-update", // someone voted (count changes; cards stay hidden)
-  revealed: "revealed", // organizer revealed
-  reVote: "re-vote", // new round started
-  accepted: "accepted", // points accepted & synced
-  participantJoined: "participant-joined",
+  voteUpdate: "vote-update",
+  revealed: "revealed",
+  reVote: "re-vote",
+  accepted: "accepted",
+  queueUpdate: "queue-update", // stories added/changed in the queue
+  navigate: "navigate", // organizer moved the room to a different story
 } as const;

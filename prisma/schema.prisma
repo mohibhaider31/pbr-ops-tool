@@ -151,44 +151,65 @@ model Person {
 }
 
 // --- Planning Poker ---
-// A poker session estimates one story. Participants join by invite code,
-// commit a card privately (hidden until reveal), the organizer reveals, and
-// on accept the agreed points are written to Jira. Realtime fan-out (votes
-// in, reveal, re-vote) is via Pusher on a channel keyed by the invite code.
+// A session is a working meeting: the team joins once by invite code and
+// walks through a QUEUE of stories together, one at a time. The organizer
+// (PO) adds stories, advances the room to the current story, and everyone's
+// screen follows. Each story (PokerItem) has its own voting rounds and, on
+// accept, syncs its points to Jira. Realtime fan-out via Pusher.
 
 enum PokerState {
   VOTING
   REVEALED
 }
 
-model PokerSession {
-  id          String     @id @default(cuid())
-  code        String     @unique // short invite code
-  jiraKey     String     // story being estimated
-  summary     String     // snapshot of the story summary at creation
-  organizerId String     // Person.id or accountId of the organizer
-  organizerName String
-  state       PokerState @default(VOTING)
-  round       Int        @default(1)
-  finalPoints Int?       // set when accepted & synced to Jira
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+enum PokerItemStatus {
+  PENDING
+  DONE
+}
 
-  votes PokerVote[]
+model PokerSession {
+  id            String    @id @default(cuid())
+  code          String    @unique
+  organizerId   String    // accountId of the organizer
+  organizerName String
+  currentItemId String?   // the PokerItem currently on everyone's screen
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  items PokerItem[]
 
   @@index([code])
 }
 
-model PokerVote {
-  id         String   @id @default(cuid())
-  sessionId  String
-  session    PokerSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  round      Int
-  voterId    String   // accountId
-  voterName  String
-  card       String   // "1","2","3","5","8","13","21","?"
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+model PokerItem {
+  id          String          @id @default(cuid())
+  sessionId   String
+  session     PokerSession    @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  jiraKey     String
+  summary     String
+  order       Int             @default(0)
+  status      PokerItemStatus @default(PENDING)
+  state       PokerState      @default(VOTING) // voting/revealed for THIS story
+  round       Int             @default(1)
+  finalPoints Int?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
 
-  @@unique([sessionId, round, voterId])
+  votes PokerVote[]
+
+  @@index([sessionId])
+}
+
+model PokerVote {
+  id        String    @id @default(cuid())
+  itemId    String
+  item      PokerItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  round     Int
+  voterId   String
+  voterName String
+  card      String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([itemId, round, voterId])
 }
