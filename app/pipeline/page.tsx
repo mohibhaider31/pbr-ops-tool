@@ -1,5 +1,5 @@
-import PipelineBoard from "@/components/PipelineBoard";
+import PipelineTabs from "@/components/PipelineTabs";
 
 export default function PipelinePage() {
-  return <PipelineBoard />;
+  return <PipelineTabs />;
 }

@@ -32,10 +32,12 @@ export async function GET() {
       const cells = emptyCells();
       const owners: Record<string, string | null> = {};
       const sprints: Record<string, string | null> = {};
+      const doneAts: Record<string, string | null> = {};
       for (const t of tracksByKey.get(m.jiraKey) || []) {
         cells[t.layer as Layer] = t.status as any;
         owners[t.layer] = t.owner;
         sprints[t.layer] = t.sprint;
+        doneAts[t.layer] = t.doneAt ? t.doneAt.toISOString() : null;
       }
       return {
         jiraKey: m.jiraKey,
@@ -48,6 +50,7 @@ export async function GET() {
           status: cells[layer],
           owner: owners[layer] ?? null,
           sprint: sprints[layer] ?? null,
+          doneAt: doneAts[layer] ?? null,
         })),
         handoff: deriveHandoff(cells as LayerCells),
       };

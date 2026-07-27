@@ -105,6 +105,20 @@ export default function PipelineBoard() {
     load();
   };
 
+  const setSprint = async (row: Row, cell: LayerCell) => {
+    const sprint = window.prompt(
+      `Sprint for ${row.jiraKey} · ${LAYER_LABEL[cell.layer]}\n(e.g. "Sprint 14" — shown as the sprint this layer's work completed in)`,
+      cell.sprint || ""
+    );
+    if (sprint === null) return;
+    await fetch(`/api/pipeline/${row.jiraKey}/${cell.layer}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sprint: sprint.trim() || null }),
+    });
+    load();
+  };
+
   const removeMember = async (row: Row) => {
     if (!window.confirm(`Remove ${row.jiraKey} from the pipeline? Layer statuses are kept if you re-add it.`)) return;
     await fetch(`/api/pipeline/member/${row.jiraKey}`, { method: "DELETE" });
@@ -248,24 +262,33 @@ export default function PipelineBoard() {
                       >
                         {STATUS_LABEL[cell.status]}
                       </button>
-                      <button
-                        onClick={() => setOwner(row, cell)}
-                        className="flex items-center gap-1.5 text-[10px] text-muted2 hover:text-ink"
-                      >
-                        {cell.owner ? (
-                          <>
-                            <span
-                              style={{ background: avatarColor(cell.owner) }}
-                              className="w-[15px] h-[15px] rounded-full text-white text-[7.5px] font-mono font-semibold flex items-center justify-center"
-                            >
-                              {initials(cell.owner)}
-                            </span>
-                            {cell.owner}
-                          </>
-                        ) : (
-                          <span className="text-muted3">+ owner</span>
-                        )}
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setOwner(row, cell)}
+                          className="flex items-center gap-1.5 text-[10px] text-muted2 hover:text-ink"
+                        >
+                          {cell.owner ? (
+                            <>
+                              <span
+                                style={{ background: avatarColor(cell.owner) }}
+                                className="w-[15px] h-[15px] rounded-full text-white text-[7.5px] font-mono font-semibold flex items-center justify-center"
+                              >
+                                {initials(cell.owner)}
+                              </span>
+                              {cell.owner}
+                            </>
+                          ) : (
+                            <span className="text-muted3">+ owner</span>
+                          )}
+                        </button>
+                        <button
+                          onClick={() => setSprint(row, cell)}
+                          title="Set sprint"
+                          className="text-[10px] text-muted3 hover:text-ink font-mono"
+                        >
+                          {cell.sprint ? cell.sprint : "+ sprint"}
+                        </button>
+                      </div>
                     </div>
                   ))}
                   <div className="flex justify-end">

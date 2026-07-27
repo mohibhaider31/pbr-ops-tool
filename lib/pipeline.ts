@@ -73,3 +73,47 @@ export function deriveHandoff(cells: LayerCells): HandoffState {
 export function emptyCells(): LayerCells {
   return { ENGINE: "NOT_STARTED", MIDDLEWARE: "NOT_STARTED", FRONTEND: "NOT_STARTED" };
 }
+
+// --- Sprint-planning support (PIPE-5) ---
+// The original problem: work finished upstream (Engine) that downstream
+// layers (MW/FE) still owe gets lost, making sprint planning hard. This
+// derives, per story, which downstream layers are "owed" — i.e. an
+// upstream layer is DONE but this layer is not yet DONE and not BLOCKED.
+// Grouped by the owing layer, this is the backlog each layer must pick up.
+
+export type OwedLayer = {
+  layer: Layer; // the layer that owes work
+  status: LayerStatus; // its current status (NOT_STARTED or IN_PROGRESS)
+  upstreamDoneAt: string | null; // when the immediately-upstream layer finished
+  upstreamSprint: string | null; // sprint the upstream work completed in
+};
+
+// Given a story's cells plus per-layer doneAt/sprint metadata, return the
+// downstream layers that are owed work. A layer is owed if the layer
+// directly before it is DONE while it itself is not DONE and not BLOCKED.
+export function deriveOwedLayers(
+  cells: LayerCells,
+  meta: Partial<Record<Layer, { doneAt: string | null; sprint: string | null }>>
+): OwedLayer[] {
+  const owed: OwedLayer[] = [];
+
+  const check = (upstream: Layer, downstream: Layer) => {
+    if (
+      cells[upstream] === "DONE" &&
+      cells[downstream] !== "DONE" &&
+      cells[downstream] !== "BLOCKED"
+    ) {
+      owed.push({
+        layer: downstream,
+        status: cells[downstream],
+        upstreamDoneAt: meta[upstream]?.doneAt ?? null,
+        upstreamSprint: meta[upstream]?.sprint ?? null,
+      });
+    }
+  };
+
+  check("ENGINE", "MIDDLEWARE");
+  check("MIDDLEWARE", "FRONTEND");
+
+  return owed;
+}
