@@ -1,0 +1,45 @@
+import { NextRequest, NextResponse } from "next/server";
+
+// Route gate. Anything not explicitly public requires a session cookie.
+// We only check for cookie presence here (middleware runs on the edge and
+// can't easily decrypt); full validation happens in the route/page via
+// getSession(). An invalid cookie falls through to getSession() returning
+// null, which the pages handle.
+const PUBLIC_PATHS = [
+  "/login",
+  "/api/auth/login",
+  "/api/auth/callback",
+  "/api/auth/logout",
+];
+
+export function middleware(req: NextRequest) {
+  const { pathname } = req.nextUrl;
+
+  // Allow public paths and Next internals/assets.
+  if (
+    PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/")) ||
+    pathname.startsWith("/_next") ||
+    pathname.startsWith("/favicon")
+  ) {
+    return NextResponse.next();
+  }
+
+  const hasSession = req.cookies.has("pbr_session");
+  if (!hasSession) {
+    // For API calls, return 401 rather than redirecting (cleaner for fetch).
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    }
+    const url = req.nextUrl.clone();
+    url.pathname = "/login";
+    url.search = "";
+    return NextResponse.redirect(url);
+  }
+
+  return NextResponse.next();
+}
+
+export const config = {
+  // Run on everything except static assets.
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+};

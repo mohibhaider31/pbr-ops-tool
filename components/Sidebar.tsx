@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 
 const NAV = [
   { label: "Backlog", href: "/", soon: false },
@@ -10,8 +11,22 @@ const NAV = [
   { label: "Settings", href: "#", soon: true },
 ];
 
+function initialsOf(name: string) {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
 export default function Sidebar() {
   const pathname = usePathname();
+  const [user, setUser] = useState<{ name: string; email: string | null } | null>(null);
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((r) => r.json())
+      .then((d) => setUser(d.user))
+      .catch(() => setUser(null));
+  }, []);
 
   return (
     <aside className="w-[220px] flex-none bg-rail text-railText flex flex-col justify-between py-[18px]">
@@ -69,14 +84,23 @@ export default function Sidebar() {
       <div className="flex flex-col gap-3 px-3">
         <div className="flex items-center gap-[9px] px-[6px] py-2 border-t border-railBorder">
           <span className="w-7 h-7 rounded-full bg-accent text-white font-mono text-[11px] font-semibold flex items-center justify-center flex-none">
-            MH
+            {user ? initialsOf(user.name) : "··"}
           </span>
-          <span className="flex flex-col min-w-0">
+          <span className="flex flex-col min-w-0 flex-1">
             <span className="text-[12px] font-medium text-railText overflow-hidden text-ellipsis whitespace-nowrap">
-              Mohib
+              {user ? user.name : "Signing in…"}
             </span>
-            <span className="text-[10px] text-railMuted2">Product Owner</span>
+            <span className="text-[10px] text-railMuted2 overflow-hidden text-ellipsis whitespace-nowrap">
+              {user?.email || ""}
+            </span>
           </span>
+          <a
+            href="/api/auth/logout"
+            title="Sign out"
+            className="text-railMuted2 hover:text-railText text-[14px] flex-none no-underline"
+          >
+            ⏻
+          </a>
         </div>
       </div>
     </aside>

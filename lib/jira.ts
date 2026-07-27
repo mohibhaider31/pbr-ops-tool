@@ -1,24 +1,37 @@
 // Thin wrapper around the Jira Cloud REST API (v3).
-// Auth: Basic, using your Atlassian account email + an API token
-// (create one at id.atlassian.com/manage-profile/security/api-tokens).
-// This is the same style of credential your Atlassian MCP setup uses,
-// just issued directly against the REST API instead of via MCP.
+// Two auth modes:
+//  - Service (default): Basic auth with a personal API token, used for
+//    background reads (backlog/pipeline) that shouldn't depend on any one
+//    user being logged in. Hits the site directly (JIRA_BASE_URL).
+//  - User (OAuth): Bearer token from a logged-in Atlassian session, used so
+//    writes (comments, transitions) are attributed to the real person and
+//    respect their own Jira permissions. Hits the OAuth gateway
+//    (api.atlassian.com/ex/jira/{cloudId}).
 
 const JIRA_BASE_URL = process.env.JIRA_BASE_URL!; // e.g. https://logicielservices.atlassian.net
 const JIRA_EMAIL = process.env.JIRA_EMAIL!;
 const JIRA_API_TOKEN = process.env.JIRA_API_TOKEN!;
 const JIRA_PROJECT_KEY = process.env.JIRA_PROJECT_KEY!; // e.g. RAE
 
-function authHeader() {
+// Optional per-request OAuth context. When provided, jiraFetch uses the
+// user's bearer token against the cloud gateway instead of the service token.
+export type JiraAuth = { accessToken: string; cloudId: string };
+
+function serviceAuthHeader() {
   const token = Buffer.from(`${JIRA_EMAIL}:${JIRA_API_TOKEN}`).toString("base64");
   return `Basic ${token}`;
 }
 
-async function jiraFetch(path: string, init?: RequestInit) {
-  const res = await fetch(`${JIRA_BASE_URL}${path}`, {
+async function jiraFetch(path: string, init?: RequestInit, auth?: JiraAuth) {
+  const base = auth
+    ? `https://api.atlassian.com/ex/jira/${auth.cloudId}`
+    : JIRA_BASE_URL;
+  const authorization = auth ? `Bearer ${auth.accessToken}` : serviceAuthHeader();
+
+  const res = await fetch(`${base}${path}`, {
     ...init,
     headers: {
-      Authorization: authHeader(),
+      Authorization: authorization,
       "Content-Type": "application/json",
       Accept: "application/json",
       ...(init?.headers || {}),
@@ -103,7 +116,7 @@ export async function fetchIssue(key: string): Promise<JiraIssue> {
  * Comment table) so questions/notes are visible to anyone reading Jira
  * directly, not just inside this tool.
  */
-export async function addJiraComment(key: string, author: string, text: string) {
+export async function addJiraComment(key: string, author: string, text: string, auth?: JiraAuth) {
   await jiraFetch(`/rest/api/3/issue/${key}/comment`, {
     method: "POST",
     body: JSON.stringify({
@@ -118,7 +131,7 @@ export async function addJiraComment(key: string, author: string, text: string) 
         ],
       },
     }),
-  });
+  }, auth);
 }
 
 /**
@@ -126,8 +139,8 @@ export async function addJiraComment(key: string, author: string, text: string) 
  * Jira transitions are graph edges, not free-form status sets, so we look
  * up the available transition IDs first and match by the target name.
  */
-export async function transitionIssue(key: string, targetStatusName: string) {
-  const data = await jiraFetch(`/rest/api/3/issue/${key}/transitions`);
+export async function transitionIssue(key: string, targetStatusName: string, auth?: JiraAuth) {
+  const data = await jiraFetch(`/rest/api/3/issue/${key}/transitions`, undefined, auth);
   const match = (data.transitions || []).find(
     (t: any) => t.to?.name?.toLowerCase() === targetStatusName.toLowerCase()
   );
@@ -141,7 +154,7 @@ export async function transitionIssue(key: string, targetStatusName: string) {
   await jiraFetch(`/rest/api/3/issue/${key}/transitions`, {
     method: "POST",
     body: JSON.stringify({ transition: { id: match.id } }),
-  });
+  }, auth);
 }
 
 /**
@@ -152,9 +165,9 @@ export async function transitionIssue(key: string, targetStatusName: string) {
  * To Do -> Requirement Analysis -> Requirement Documentation ->
  * Pending PO Review -> Ready For Dev.
  */
-export async function transitionThroughPath(key: string, path: string[]) {
+export async function transitionThroughPath(key: string, path: string[], auth?: JiraAuth) {
   for (const targetStatus of path) {
-    await transitionIssue(key, targetStatus);
+    await transitionIssue(key, targetStatus, auth);
   }
 }
 
