@@ -8,7 +8,7 @@ const API_BASE = "https://api.atlassian.com";
 const SCOPES = [
   "read:jira-work",
   "write:jira-work",
-  "read:jira-user",
+  "read:me", // User identity API - profile/name/email/accountId for login
   "offline_access",
 ];
 
