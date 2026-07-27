@@ -92,3 +92,13 @@ model LayerTrack {
   @@unique([jiraKey, layer])
   @@index([jiraKey])
 }
+
+// Pipeline membership. A story appears in the tracker only once explicitly
+// added. Kept separate from LayerTrack so removing a story from the pipeline
+// drops only its membership — the layer statuses persist, and re-adding
+// resumes exactly where it left off.
+model PipelineItem {
+  id       String   @id @default(cuid())
+  jiraKey  String   @unique
+  addedAt  DateTime @default(now())
+}

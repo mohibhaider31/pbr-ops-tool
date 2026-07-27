@@ -3,36 +3,46 @@ import { fetchActiveStories } from "@/lib/jira";
 import { prisma } from "@/lib/prisma";
 import { LAYERS, emptyCells, deriveHandoff, type LayerCells, type Layer } from "@/lib/pipeline";
 
+// Returns only stories explicitly added to the pipeline. Layer cells are
+// joined in; handoff is derived. Jira is queried to get current summary/status
+// for the member keys (so titles/statuses stay fresh).
 export async function GET() {
   try {
+    const members = await prisma.pipelineItem.findMany({ orderBy: { addedAt: "asc" } });
+    const memberKeys = new Set(members.map((m) => m.jiraKey));
+
+    if (memberKeys.size === 0) return NextResponse.json({ rows: [] });
+
+    // Pull active stories from Jira and index by key for fresh summary/status.
     const stories = await fetchActiveStories();
-    const keys = stories.map((s) => s.key);
+    const storyByKey = new Map(stories.map((s) => [s.key, s]));
 
-    const tracks = keys.length
-      ? await prisma.layerTrack.findMany({ where: { jiraKey: { in: keys } } })
-      : [];
-
-    // Group layer rows by story key.
-    const byKey = new Map<string, typeof tracks>();
+    const tracks = await prisma.layerTrack.findMany({
+      where: { jiraKey: { in: [...memberKeys] } },
+    });
+    const tracksByKey = new Map<string, typeof tracks>();
     for (const t of tracks) {
-      const arr = byKey.get(t.jiraKey) || [];
+      const arr = tracksByKey.get(t.jiraKey) || [];
       arr.push(t);
-      byKey.set(t.jiraKey, arr);
+      tracksByKey.set(t.jiraKey, arr);
     }
 
-    const rows = stories.map((story) => {
+    const rows = members.map((m) => {
+      const story = storyByKey.get(m.jiraKey);
       const cells = emptyCells();
       const owners: Record<string, string | null> = {};
       const sprints: Record<string, string | null> = {};
-      for (const t of byKey.get(story.key) || []) {
+      for (const t of tracksByKey.get(m.jiraKey) || []) {
         cells[t.layer as Layer] = t.status as any;
         owners[t.layer] = t.owner;
         sprints[t.layer] = t.sprint;
       }
       return {
-        jiraKey: story.key,
-        summary: story.summary,
-        jiraStatus: story.status,
+        jiraKey: m.jiraKey,
+        // If a member story is no longer active in Jira (e.g. moved to Done),
+        // we still show it but flag the missing live data.
+        summary: story?.summary ?? "(not in active Jira set)",
+        jiraStatus: story?.status ?? "—",
         layers: LAYERS.map((layer) => ({
           layer,
           status: cells[layer],
@@ -44,6 +54,28 @@ export async function GET() {
     });
 
     return NextResponse.json({ rows });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}
+
+// Add one or more stories to the pipeline.
+export async function POST(req: Request) {
+  try {
+    const { jiraKeys }: { jiraKeys: string[] } = await req.json();
+    if (!Array.isArray(jiraKeys) || jiraKeys.length === 0)
+      return NextResponse.json({ error: "No keys provided" }, { status: 400 });
+
+    await prisma.$transaction(
+      jiraKeys.map((jiraKey) =>
+        prisma.pipelineItem.upsert({
+          where: { jiraKey },
+          create: { jiraKey },
+          update: {},
+        })
+      )
+    );
+    return NextResponse.json({ ok: true, added: jiraKeys.length });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
