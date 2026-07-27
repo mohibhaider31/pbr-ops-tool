@@ -2,16 +2,29 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  background: #f7f8fb;
-  color: #12142b;
-}
+@import url("https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap");
 
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #F4F2ED;
 }
-::-webkit-scrollbar-thumb {
-  background: #d7dae3;
-  border-radius: 4px;
+body {
+  font-family: Archivo, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  color: #141412;
 }
+a { color: #C13A16; text-decoration: none; }
+a:hover { color: #8F2A0F; text-decoration: underline; }
+::selection { background: #F3C9B8; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes pulseDot { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+@keyframes riseIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #D3CEC3; border: 3px solid #F4F2ED; border-radius: 6px; }
+
+.animate-riseIn { animation: riseIn .16s ease both; }
+.animate-pulseDot { animation: pulseDot 1.6s infinite; }
