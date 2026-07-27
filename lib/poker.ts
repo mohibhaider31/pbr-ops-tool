@@ -11,6 +11,10 @@ export type RevealAnalysis = {
   suggested: number | null; // nearest deck value to the median
   verdict: string;
   safeToAccept: boolean;
+  average: number | null; // mean of numeric votes
+  mode: string | null; // most-voted card (the "Most Votes" value)
+  confidence: number | null; // % of ALL votes matching the mode (0-100)
+  distribution: { card: string; count: number }[]; // sorted desc by count
 };
 
 const NUMERIC_DECK = [1, 2, 3, 5, 8, 13, 21];
@@ -28,6 +32,25 @@ export function analyze(votes: Vote[]): RevealAnalysis {
 
   const hasUnknowns = votes.some((v) => v.card === "?");
 
+  // Vote distribution across ALL cards (including ?), sorted by count desc.
+  const counts = new Map<string, number>();
+  for (const v of votes) counts.set(v.card, (counts.get(v.card) || 0) + 1);
+  const distribution = [...counts.entries()]
+    .map(([card, count]) => ({ card, count }))
+    .sort((a, b) => b.count - a.count);
+
+  // Mode = the most-voted card; confidence = its share of all votes.
+  const mode = distribution.length ? distribution[0].card : null;
+  const confidence =
+    votes.length && mode !== null
+      ? Math.round((distribution[0].count / votes.length) * 100)
+      : null;
+
+  const average =
+    numeric.length > 0
+      ? Math.round((numeric.reduce((a, b) => a + b, 0) / numeric.length) * 100) / 100
+      : null;
+
   if (numeric.length === 0) {
     return {
       numeric: [],
@@ -36,6 +59,10 @@ export function analyze(votes: Vote[]): RevealAnalysis {
       suggested: null,
       verdict: hasUnknowns ? "Everyone voted ? — the story needs clarification before estimating." : "No votes yet.",
       safeToAccept: false,
+      average: null,
+      mode,
+      confidence,
+      distribution,
     };
   }
 
@@ -46,8 +73,6 @@ export function analyze(votes: Vote[]): RevealAnalysis {
     numeric.length % 2 ? numeric[mid] : (numeric[mid - 1] + numeric[mid]) / 2;
   const suggested = nearestDeckValue(median);
 
-  // "Distance" in deck steps between min and max — a better spread measure
-  // than raw difference, since the deck is non-linear (8 to 13 is one step).
   const stepIndex = (v: number) => NUMERIC_DECK.indexOf(nearestDeckValue(v));
   const spreadSteps = stepIndex(max) - stepIndex(min);
 
@@ -72,7 +97,7 @@ export function analyze(votes: Vote[]): RevealAnalysis {
 
   const spreadLabel = min === max ? `All ${min}` : `${min} – ${max}${hasUnknowns ? " (+?)" : ""}`;
 
-  return { numeric, spreadLabel, median, suggested, verdict, safeToAccept: safe };
+  return { numeric, spreadLabel, median, suggested, verdict, safeToAccept: safe, average, mode, confidence, distribution };
 }
 
 // Short, human-friendly invite code.
