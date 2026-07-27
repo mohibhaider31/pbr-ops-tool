@@ -102,3 +102,23 @@ model PipelineItem {
   jiraKey  String   @unique
   addedAt  DateTime @default(now())
 }
+
+// Server-side auth sessions. The browser cookie holds only the small `id`;
+// the actual Atlassian tokens and identity live here, keyed by that id. This
+// keeps the cookie tiny (no multi-KB tokens in the browser) and lets us
+// revoke/refresh server-side.
+model AuthSession {
+  id              String   @id @default(cuid())
+  accountId       String
+  name            String
+  email           String?
+  avatarUrl       String?
+  cloudId         String
+  accessToken     String
+  refreshToken    String
+  accessExpiresAt DateTime
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([accountId])
+}

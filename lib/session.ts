@@ -1,92 +1,84 @@
-// Encrypted session handling for Atlassian OAuth.
-// The session holds the user's identity plus their Jira tokens. It's stored
-// as a JWE (encrypted JWT) in an httpOnly cookie, so the browser can't read
-// the tokens and they never appear in client JS.
+// Server-side session store. The browser cookie holds only a small session
+// id (a cuid); the Atlassian tokens and identity live in the AuthSession
+// table. This keeps the cookie tiny and robust (no multi-KB tokens in the
+// browser) and allows server-side refresh/revocation.
 
-import { EncryptJWT, jwtDecrypt } from "jose";
 import { cookies } from "next/headers";
+import { prisma } from "@/lib/prisma";
 
 const COOKIE_NAME = "pbr_session";
-// 32-byte key derived from the env secret. SESSION_SECRET must be set in the
-// environment (generated during setup, never committed).
-function key(): Uint8Array {
-  const secret = process.env.SESSION_SECRET;
-  if (!secret) throw new Error("SESSION_SECRET is not set");
-  // Accept either a raw 32+ char string or base64; normalize to 32 bytes.
-  const raw = Buffer.from(secret);
-  if (raw.length >= 32) return new Uint8Array(raw.subarray(0, 32));
-  const padded = Buffer.alloc(32);
-  raw.copy(padded);
-  return new Uint8Array(padded);
-}
 
 export type Session = {
-  accountId: string; // Atlassian account ID (stable identity)
+  id: string;
+  accountId: string;
   name: string;
   email: string | null;
   avatarUrl: string | null;
-  cloudId: string; // the Jira site (cloud) id for API calls
+  cloudId: string;
   accessToken: string;
   refreshToken: string;
   accessExpiresAt: number; // epoch ms
 };
 
-export async function encodeSession(session: Session): Promise<string> {
-  return await new EncryptJWT(session as any)
-    .setProtectedHeader({ alg: "dir", enc: "A256GCM" })
-    .setIssuedAt()
-    .setExpirationTime("30d")
-    .encrypt(key());
-}
+export type NewSession = Omit<Session, "id">;
 
-export async function decodeSession(token: string): Promise<Session | null> {
-  try {
-    const { payload } = await jwtDecrypt(token, key());
-    return payload as unknown as Session;
-  } catch {
-    return null;
-  }
+// Persist a new session row and return its id (goes in the cookie).
+export async function createSession(data: NewSession): Promise<string> {
+  const row = await prisma.authSession.create({
+    data: {
+      accountId: data.accountId,
+      name: data.name,
+      email: data.email,
+      avatarUrl: data.avatarUrl,
+      cloudId: data.cloudId,
+      accessToken: data.accessToken,
+      refreshToken: data.refreshToken,
+      accessExpiresAt: new Date(data.accessExpiresAt),
+    },
+  });
+  return row.id;
 }
 
 export async function getSession(): Promise<Session | null> {
-  const jar = cookies();
-  const token = jar.get(COOKIE_NAME)?.value;
-  if (!token) return null;
-  return decodeSession(token);
+  const id = cookies().get(COOKIE_NAME)?.value;
+  if (!id) return null;
+  const row = await prisma.authSession.findUnique({ where: { id } });
+  if (!row) return null;
+  return {
+    id: row.id,
+    accountId: row.accountId,
+    name: row.name,
+    email: row.email,
+    avatarUrl: row.avatarUrl,
+    cloudId: row.cloudId,
+    accessToken: row.accessToken,
+    refreshToken: row.refreshToken,
+    accessExpiresAt: row.accessExpiresAt.getTime(),
+  };
 }
 
-export async function setSessionCookie(session: Session) {
-  const token = await encodeSession(session);
-  cookies().set(COOKIE_NAME, token, {
-    httpOnly: true,
-    secure: true,
-    sameSite: "lax",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 30,
-  });
+export async function deleteSession(id: string) {
+  await prisma.authSession.deleteMany({ where: { id } });
 }
 
-export function clearSessionCookie() {
-  cookies().set(COOKIE_NAME, "", { httpOnly: true, secure: true, path: "/", maxAge: 0 });
-}
-
-// Attach the session cookie directly onto a response object. Required when
-// redirecting from a route handler. Uses an explicit Set-Cookie header
-// (via headers.append) rather than res.cookies.set(), because in Next 14
-// route handlers the latter does not always serialize onto the outgoing
-// response — the raw header approach is reliable.
-export async function attachSessionCookie(res: any, session: Session) {
-  const token = await encodeSession(session);
-  const cookie = [
-    `${COOKIE_NAME}=${token}`,
+// Cookie helpers — the value is just the session id, so this is always tiny.
+export function sessionCookieString(id: string): string {
+  return [
+    `${COOKIE_NAME}=${id}`,
     "Path=/",
     `Max-Age=${60 * 60 * 24 * 30}`,
     "HttpOnly",
     "Secure",
     "SameSite=Lax",
   ].join("; ");
-  res.headers.append("Set-Cookie", cookie);
-  return res;
+}
+
+export function clearCookieString(): string {
+  return `${COOKIE_NAME}=; Path=/; Max-Age=0`;
+}
+
+export function clearSessionCookie() {
+  cookies().set(COOKIE_NAME, "", { httpOnly: true, secure: true, path: "/", maxAge: 0 });
 }
 
 export const SESSION_COOKIE = COOKIE_NAME;
