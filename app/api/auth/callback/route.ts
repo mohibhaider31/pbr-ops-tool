@@ -1,6 +1,5 @@
 export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { exchangeCode, fetchMe, fetchCloudId } from "@/lib/atlassian-oauth";
 import { attachSessionCookie, type Session } from "@/lib/session";
 
@@ -14,13 +13,22 @@ export async function GET(req: NextRequest) {
   if (error) {
     return NextResponse.redirect(`${origin}/login?error=${encodeURIComponent(error)}`);
   }
-  if (!code || !state) {
+  if (!code) {
     return NextResponse.redirect(`${origin}/login?error=missing_code`);
   }
 
-  const expected = cookies().get("pbr_oauth_state")?.value;
-  if (!expected || expected !== state) {
-    return NextResponse.redirect(`${origin}/login?error=bad_state`);
+  // Read the state cookie directly off the request (reliable) rather than via
+  // the cookies() helper.
+  const cookieState = req.cookies.get("pbr_oauth_state")?.value;
+
+  // CSRF check: state from Atlassian must match the cookie we set at login.
+  // If the cookie is missing entirely (e.g. blocked/stripped), we surface a
+  // specific error so it's diagnosable rather than a silent loop.
+  if (!cookieState) {
+    return NextResponse.redirect(`${origin}/login?error=no_state_cookie`);
+  }
+  if (!state || state !== cookieState) {
+    return NextResponse.redirect(`${origin}/login?error=state_mismatch`);
   }
 
   try {
@@ -38,11 +46,13 @@ export async function GET(req: NextRequest) {
       accessExpiresAt: Date.now() + expiresIn * 1000,
     };
 
-    // Set the session cookie ON the redirect response (not via cookies()),
-    // so it reliably attaches. Also clear the one-time state cookie here.
     const res = NextResponse.redirect(`${origin}/`);
     await attachSessionCookie(res, session);
-    res.cookies.set("pbr_oauth_state", "", { path: "/", maxAge: 0 });
+    // clear the one-time state cookie
+    res.headers.append(
+      "Set-Cookie",
+      "pbr_oauth_state=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax"
+    );
     return res;
   } catch (e: any) {
     return NextResponse.redirect(`${origin}/login?error=${encodeURIComponent(e.message)}`);
