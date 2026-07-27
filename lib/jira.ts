@@ -157,3 +157,36 @@ export async function transitionThroughPath(key: string, path: string[]) {
     await transitionIssue(key, targetStatus);
   }
 }
+
+// --- Pipeline: fetch active (non-terminal) stories for layer tracking ---
+// Terminal statuses are excluded since a shipped/cancelled story has no
+// pending layer work. Everything else is "active" and appears in the tracker.
+const TERMINAL_STATUSES = (
+  process.env.JIRA_TERMINAL_STATUSES || "Done,Canceled,Cancelled,Frozen,Released to OAT,Resolved"
+)
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+export async function fetchActiveStories(): Promise<JiraIssue[]> {
+  const notIn = TERMINAL_STATUSES.map((s) => `"${s}"`).join(", ");
+  const jql = `project = ${JIRA_PROJECT_KEY} AND issuetype = Story AND status NOT IN (${notIn}) ORDER BY created ASC`;
+  const issues: any[] = [];
+  let nextPageToken: string | undefined;
+
+  do {
+    const data = await jiraFetch(`/rest/api/3/search/jql`, {
+      method: "POST",
+      body: JSON.stringify({
+        jql,
+        maxResults: 100,
+        fields: BACKLOG_FIELDS,
+        ...(nextPageToken ? { nextPageToken } : {}),
+      }),
+    });
+    issues.push(...(data.issues || []));
+    nextPageToken = data.isLast ? undefined : data.nextPageToken;
+  } while (nextPageToken);
+
+  return issues.map(mapIssue);
+}

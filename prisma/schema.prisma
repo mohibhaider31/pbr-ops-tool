@@ -58,3 +58,37 @@ model Comment {
   isQuestion Boolean @default(false)
   createdAt DateTime @default(now())
 }
+
+// --- Pipeline tracker (Engine -> Middleware -> Frontend) ---
+// Tool-side layer tracking: Jira has no per-layer concept, so we attach
+// three lightweight status cells to a story on our side. Keyed by jiraKey
+// directly (not a Story FK) because pipeline covers any non-Done Jira
+// story, whether or not it's been pulled into the backlog board yet.
+
+enum Layer {
+  ENGINE
+  MIDDLEWARE
+  FRONTEND
+}
+
+enum LayerStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  DONE
+  BLOCKED
+}
+
+model LayerTrack {
+  id        String      @id @default(cuid())
+  jiraKey   String       // e.g. RAE-1234 (the story this layer belongs to)
+  layer     Layer
+  status    LayerStatus  @default(NOT_STARTED)
+  owner     String?      // free text for now; real identity comes with AUTH
+  sprint    String?      // optional sprint tag
+  doneAt    DateTime?    // set when status flips to DONE (drives stall detection)
+  updatedAt DateTime     @updatedAt
+  createdAt DateTime     @default(now())
+
+  @@unique([jiraKey, layer])
+  @@index([jiraKey])
+}
