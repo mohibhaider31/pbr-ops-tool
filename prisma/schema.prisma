@@ -149,3 +149,46 @@ model Person {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 }
+
+// --- Planning Poker ---
+// A poker session estimates one story. Participants join by invite code,
+// commit a card privately (hidden until reveal), the organizer reveals, and
+// on accept the agreed points are written to Jira. Realtime fan-out (votes
+// in, reveal, re-vote) is via Pusher on a channel keyed by the invite code.
+
+enum PokerState {
+  VOTING
+  REVEALED
+}
+
+model PokerSession {
+  id          String     @id @default(cuid())
+  code        String     @unique // short invite code
+  jiraKey     String     // story being estimated
+  summary     String     // snapshot of the story summary at creation
+  organizerId String     // Person.id or accountId of the organizer
+  organizerName String
+  state       PokerState @default(VOTING)
+  round       Int        @default(1)
+  finalPoints Int?       // set when accepted & synced to Jira
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  votes PokerVote[]
+
+  @@index([code])
+}
+
+model PokerVote {
+  id         String   @id @default(cuid())
+  sessionId  String
+  session    PokerSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  round      Int
+  voterId    String   // accountId
+  voterName  String
+  card       String   // "1","2","3","5","8","13","21","?"
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([sessionId, round, voterId])
+}

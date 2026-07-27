@@ -237,3 +237,41 @@ export async function fetchProjectMembers(auth?: JiraAuth): Promise<JiraUser[]> 
       avatarUrl: u.avatarUrls?.["48x48"] ?? null,
     }));
 }
+
+// --- Poker: write agreed story points back to Jira ---
+// Writes the confirmed estimate to this instance's Story Points field
+// (customfield_10024). Runs as the organizer's user token when provided.
+export async function setStoryPoints(key: string, points: number, auth?: JiraAuth) {
+  await jiraFetch(
+    `/rest/api/3/issue/${key}`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ fields: { customfield_10024: points } }),
+    },
+    auth
+  );
+}
+
+// --- Poker: fetch Ready-For-Dev stories to estimate ---
+export async function fetchReadyForDevStories(auth?: JiraAuth): Promise<JiraIssue[]> {
+  const status = process.env.JIRA_READY_FOR_DEV_STATUS || "Ready For Dev";
+  const jql = `project = ${JIRA_PROJECT_KEY} AND issuetype = Story AND status = "${status}" ORDER BY updated DESC`;
+  const issues: any[] = [];
+  let nextPageToken: string | undefined;
+  do {
+    const data = await jiraFetch(
+      `/rest/api/3/search/jql`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          jql, maxResults: 100, fields: BACKLOG_FIELDS,
+          ...(nextPageToken ? { nextPageToken } : {}),
+        }),
+      },
+      auth
+    );
+    issues.push(...(data.issues || []));
+    nextPageToken = data.isLast ? undefined : data.nextPageToken;
+  } while (nextPageToken);
+  return issues.map(mapIssue);
+}
