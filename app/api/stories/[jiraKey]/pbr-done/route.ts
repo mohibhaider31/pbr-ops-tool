@@ -4,7 +4,7 @@ import { transitionIssue } from "@/lib/jira";
 
 // Target status name after a PBR discussion. Adjust to match your
 // workflow's exact status name if it differs.
-const READY_FOR_DEV_STATUS = process.env.JIRA_READY_FOR_DEV_STATUS || "Ready for Dev";
+const READY_FOR_DEV_STATUS = process.env.JIRA_READY_FOR_DEV_STATUS || "Ready For Dev";
 
 export async function POST(
   _req: Request,
