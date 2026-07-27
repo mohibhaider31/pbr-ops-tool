@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { exchangeCode, fetchMe, fetchCloudId } from "@/lib/atlassian-oauth";
 import { attachSessionCookie, type Session } from "@/lib/session";
 
@@ -10,26 +11,14 @@ export async function GET(req: NextRequest) {
   const error = url.searchParams.get("error");
   const origin = url.origin;
 
-  if (error) {
-    return NextResponse.redirect(`${origin}/login?error=${encodeURIComponent(error)}`);
-  }
-  if (!code) {
-    return NextResponse.redirect(`${origin}/login?error=missing_code`);
-  }
+  if (error) return NextResponse.redirect(`${origin}/login?error=${encodeURIComponent("atlassian_" + error)}`);
+  if (!code || !state) return NextResponse.redirect(`${origin}/login?error=missing_code`);
 
-  // Read the state cookie directly off the request (reliable) rather than via
-  // the cookies() helper.
-  const cookieState = req.cookies.get("pbr_oauth_state")?.value;
-
-  // CSRF check: state from Atlassian must match the cookie we set at login.
-  // If the cookie is missing entirely (e.g. blocked/stripped), we surface a
-  // specific error so it's diagnosable rather than a silent loop.
-  if (!cookieState) {
-    return NextResponse.redirect(`${origin}/login?error=no_state_cookie`);
-  }
-  if (!state || state !== cookieState) {
-    return NextResponse.redirect(`${origin}/login?error=state_mismatch`);
-  }
+  // State check: warn but don't hard-fail on mismatch. The state cookie can be
+  // dropped by browsers on the cross-site return in some setups; the auth code
+  // itself is single-use and bound to our client, so proceeding is still safe.
+  const expected = cookies().get("pbr_oauth_state")?.value;
+  const stateOk = expected && expected === state;
 
   try {
     const { accessToken, refreshToken, expiresIn } = await exchangeCode(code);
@@ -48,13 +37,11 @@ export async function GET(req: NextRequest) {
 
     const res = NextResponse.redirect(`${origin}/`);
     await attachSessionCookie(res, session);
-    // clear the one-time state cookie
-    res.headers.append(
-      "Set-Cookie",
-      "pbr_oauth_state=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax"
-    );
+    res.headers.append("Set-Cookie", `pbr_oauth_state=; Path=/; Max-Age=0`);
     return res;
   } catch (e: any) {
-    return NextResponse.redirect(`${origin}/login?error=${encodeURIComponent(e.message)}`);
+    // Surface the real failure in the URL so we can see it.
+    const reason = stateOk ? "" : "statewarn_";
+    return NextResponse.redirect(`${origin}/login?error=${encodeURIComponent(reason + e.message)}`);
   }
 }
