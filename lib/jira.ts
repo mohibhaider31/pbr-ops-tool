@@ -275,3 +275,26 @@ export async function fetchReadyForDevStories(auth?: JiraAuth): Promise<JiraIssu
   } while (nextPageToken);
   return issues.map(mapIssue);
 }
+
+// --- My Work: stories assigned to a user in Jira (native assignee) ---
+export async function fetchMyJiraStories(accountId: string, auth?: JiraAuth): Promise<JiraIssue[]> {
+  const jql = `project = ${JIRA_PROJECT_KEY} AND issuetype = Story AND assignee = "${accountId}" ORDER BY updated DESC`;
+  const issues: any[] = [];
+  let nextPageToken: string | undefined;
+  do {
+    const data = await jiraFetch(
+      `/rest/api/3/search/jql`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          jql, maxResults: 100, fields: BACKLOG_FIELDS,
+          ...(nextPageToken ? { nextPageToken } : {}),
+        }),
+      },
+      auth
+    );
+    issues.push(...(data.issues || []));
+    nextPageToken = data.isLast ? undefined : data.nextPageToken;
+  } while (nextPageToken);
+  return issues.map(mapIssue);
+}
