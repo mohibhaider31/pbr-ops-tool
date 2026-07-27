@@ -143,3 +143,17 @@ export async function transitionIssue(key: string, targetStatusName: string) {
     body: JSON.stringify({ transition: { id: match.id } }),
   });
 }
+
+/**
+ * Walk an issue through a sequence of transitions, one status at a time.
+ * Needed here because this Jira workflow has no direct edge from the
+ * backlog status straight to the PBR target status - it has to pass
+ * through several intermediate statuses in order (confirmed with the PO):
+ * To Do -> Requirement Analysis -> Requirement Documentation ->
+ * Pending PO Review -> Ready For Dev.
+ */
+export async function transitionThroughPath(key: string, path: string[]) {
+  for (const targetStatus of path) {
+    await transitionIssue(key, targetStatus);
+  }
+}
