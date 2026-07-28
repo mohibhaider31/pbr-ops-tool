@@ -47,14 +47,17 @@ export default function PokerRoom({ code }: { code: string }) {
   const showToast = (m: string) => { setToast(m); setTimeout(() => setToast(null), 2600); };
   const cur = s?.current || null;
 
-  const vote = async (card: string) => {
+  const vote = (card: string) => {
     if (!cur) return;
-    setBusy(true);
-    setS((p) => p && p.current ? { ...p, current: { ...p.current, myVote: card } } : p);
-    await fetch(`/api/poker/${code}/item/${cur.itemId}/vote`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ card }),
-    });
-    setBusy(false); load();
+    // Instant, optimistic: reflect the pick immediately and fire the request
+    // in the background. We don't block the deck or force a reload — Pusher
+    // notifies everyone else, and our own state already shows the pick.
+    setS((p) => (p && p.current ? { ...p, current: { ...p.current, myVote: card } } : p));
+    fetch(`/api/poker/${code}/item/${cur.itemId}/vote`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ card }),
+    }).catch(() => showToast("Vote didn't save — check your connection"));
   };
   const act = async (path: string, body?: any) => {
     if (!cur) return;
@@ -245,7 +248,7 @@ export default function PokerRoom({ code }: { code: string }) {
                     {DECK.map((card, i) => {
                       const picked = cur.myVote === card;
                       return (
-                        <button key={card} onClick={() => vote(card)} disabled={busy}
+                        <button key={card} onClick={() => vote(card)}
                           className={`w-[42px] h-[58px] border font-mono text-[16px] font-bold transition-all ${picked ? "bg-accent text-white border-accent -translate-y-[9px] shadow-lg" : "bg-white text-ink border-border hover:border-ink hover:-translate-y-[4px]"}`}
                           style={{ transform: picked ? undefined : `rotate(${(i - (DECK.length - 1) / 2) * 2}deg)` }}>{card}</button>
                       );
