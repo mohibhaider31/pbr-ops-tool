@@ -17,6 +17,14 @@ const JIRA_PROJECT_KEY = process.env.JIRA_PROJECT_KEY!; // e.g. RAE
 // user's bearer token against the cloud gateway instead of the service token.
 export type JiraAuth = { accessToken: string; cloudId: string };
 
+// Per-board Jira config. Falls back to env when not provided (legacy/default).
+export type JiraProjectOpts = {
+  projectKey?: string;
+  backlogStatus?: string;
+  readyForDevStatus?: string;
+};
+const DEFAULT_PROJECT = process.env.JIRA_PROJECT_KEY!;
+
 function serviceAuthHeader() {
   const token = Buffer.from(`${JIRA_EMAIL}:${JIRA_API_TOKEN}`).toString("base64");
   return `Basic ${token}`;
@@ -84,8 +92,10 @@ const BACKLOG_FIELDS = ["summary", "status", "issuetype", "labels", "assignee", 
  * this uses its replacement, POST /rest/api/3/search/jql, which is
  * cursor-paginated (nextPageToken/isLast) rather than offset-based.
  */
-export async function fetchBacklog(): Promise<JiraIssue[]> {
-  const jql = `project = ${JIRA_PROJECT_KEY} AND status = "${BACKLOG_STATUS}" ORDER BY created ASC`;
+export async function fetchBacklog(opts?: JiraProjectOpts): Promise<JiraIssue[]> {
+  const projectKey = opts?.projectKey || DEFAULT_PROJECT;
+  const backlogStatus = opts?.backlogStatus || BACKLOG_STATUS;
+  const jql = `project = ${projectKey} AND status = "${backlogStatus}" ORDER BY created ASC`;
   const issues: any[] = [];
   let nextPageToken: string | undefined;
 
@@ -181,9 +191,10 @@ const TERMINAL_STATUSES = (
   .map((s) => s.trim())
   .filter(Boolean);
 
-export async function fetchActiveStories(): Promise<JiraIssue[]> {
+export async function fetchActiveStories(opts?: JiraProjectOpts): Promise<JiraIssue[]> {
   const notIn = TERMINAL_STATUSES.map((s) => `"${s}"`).join(", ");
-  const jql = `project = ${JIRA_PROJECT_KEY} AND issuetype = Story AND status NOT IN (${notIn}) ORDER BY created ASC`;
+  const projectKey = opts?.projectKey || DEFAULT_PROJECT;
+  const jql = `project = ${projectKey} AND issuetype = Story AND status NOT IN (${notIn}) ORDER BY created ASC`;
   const issues: any[] = [];
   let nextPageToken: string | undefined;
 
@@ -210,7 +221,7 @@ export async function fetchActiveStories(): Promise<JiraIssue[]> {
 // to service token which can read project users).
 export type JiraUser = { accountId: string; name: string; email: string | null; avatarUrl: string | null };
 
-export async function fetchProjectMembers(auth?: JiraAuth): Promise<JiraUser[]> {
+export async function fetchProjectMembers(auth?: JiraAuth, opts?: JiraProjectOpts): Promise<JiraUser[]> {
   // assignable users search for the project; paginate through results.
   const users: any[] = [];
   let startAt = 0;
@@ -218,7 +229,7 @@ export async function fetchProjectMembers(auth?: JiraAuth): Promise<JiraUser[]> 
   // eslint-disable-next-line no-constant-condition
   while (true) {
     const data = await jiraFetch(
-      `/rest/api/3/user/assignable/search?project=${JIRA_PROJECT_KEY}&startAt=${startAt}&maxResults=${maxResults}`,
+      `/rest/api/3/user/assignable/search?project=${opts?.projectKey || DEFAULT_PROJECT}&startAt=${startAt}&maxResults=${maxResults}`,
       undefined,
       auth
     );
@@ -253,9 +264,10 @@ export async function setStoryPoints(key: string, points: number, auth?: JiraAut
 }
 
 // --- Poker: fetch Ready-For-Dev stories to estimate ---
-export async function fetchReadyForDevStories(auth?: JiraAuth): Promise<JiraIssue[]> {
-  const status = process.env.JIRA_READY_FOR_DEV_STATUS || "Ready For Dev";
-  const jql = `project = ${JIRA_PROJECT_KEY} AND issuetype = Story AND status = "${status}" ORDER BY updated DESC`;
+export async function fetchReadyForDevStories(auth?: JiraAuth, opts?: JiraProjectOpts): Promise<JiraIssue[]> {
+  const projectKey = opts?.projectKey || DEFAULT_PROJECT;
+  const status = opts?.readyForDevStatus || process.env.JIRA_READY_FOR_DEV_STATUS || "Ready For Dev";
+  const jql = `project = ${projectKey} AND issuetype = Story AND status = "${status}" ORDER BY updated DESC`;
   const issues: any[] = [];
   let nextPageToken: string | undefined;
   do {
@@ -277,8 +289,9 @@ export async function fetchReadyForDevStories(auth?: JiraAuth): Promise<JiraIssu
 }
 
 // --- My Work: stories assigned to a user in Jira (native assignee) ---
-export async function fetchMyJiraStories(accountId: string, auth?: JiraAuth): Promise<JiraIssue[]> {
-  const jql = `project = ${JIRA_PROJECT_KEY} AND issuetype = Story AND assignee = "${accountId}" ORDER BY updated DESC`;
+export async function fetchMyJiraStories(accountId: string, auth?: JiraAuth, opts?: JiraProjectOpts): Promise<JiraIssue[]> {
+  const projectKey = opts?.projectKey || DEFAULT_PROJECT;
+  const jql = `project = ${projectKey} AND issuetype = Story AND assignee = "${accountId}" ORDER BY updated DESC`;
   const issues: any[] = [];
   let nextPageToken: string | undefined;
   do {

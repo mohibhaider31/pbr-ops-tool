@@ -3,13 +3,15 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getViewer } from "@/lib/viewer";
 import { can } from "@/lib/permissions";
+import { getCurrentBoard } from "@/lib/board";
 import { DECK } from "@/lib/poker";
 import { pusher, pokerChannel, POKER_EVENTS } from "@/lib/pusher-server";
 
 export async function POST(req: Request, { params }: { params: { code: string; itemId: string } }) {
   const viewer = await getViewer();
   if (!viewer) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  if (!can({ role: viewer.role, isAdmin: viewer.isAdmin }, "poker_vote"))
+  const board = await getCurrentBoard();
+  if (!can({ role: board?.role ?? "VIEWER", isAdmin: board?.isAdmin ?? false }, "poker_vote"))
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
   const { card }: { card: string } = await req.json();

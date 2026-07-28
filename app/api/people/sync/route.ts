@@ -3,39 +3,34 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getViewer } from "@/lib/viewer";
 import { getSession } from "@/lib/session";
+import { getCurrentBoard } from "@/lib/board";
 import { fetchProjectMembers } from "@/lib/jira";
 
-// Pull assignable project members from Jira and upsert them as Person rows.
-// New people default to DEVELOPER; existing rows keep their role/admin flag
-// (we only refresh name/avatar). Admin only.
+// Pull assignable members of the current board's Jira project and ensure each
+// is a Person AND a member of this board (default DEVELOPER). Admin only.
 export async function POST() {
   const viewer = await getViewer();
   if (!viewer?.isAdmin) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  const board = await getCurrentBoard();
+  if (!board) return NextResponse.json({ error: "no board" }, { status: 400 });
 
   try {
     const session = await getSession();
     const auth = session ? { accessToken: session.accessToken, cloudId: session.cloudId } : undefined;
-    const members = await fetchProjectMembers(auth);
+    const members = await fetchProjectMembers(auth, { projectKey: board.jiraProjectKey });
 
     let added = 0;
     for (const m of members) {
-      const existing = await prisma.person.findUnique({ where: { accountId: m.accountId } });
-      if (existing) {
-        await prisma.person.update({
-          where: { id: existing.id },
-          data: { name: m.name, avatarUrl: m.avatarUrl, email: m.email ?? existing.email },
-        });
-      } else {
-        await prisma.person.create({
-          data: {
-            accountId: m.accountId,
-            name: m.name,
-            email: m.email,
-            avatarUrl: m.avatarUrl,
-            role: "DEVELOPER",
-            source: "jira",
-          },
-        });
+      const person = await prisma.person.upsert({
+        where: { accountId: m.accountId },
+        create: { accountId: m.accountId, name: m.name, email: m.email, avatarUrl: m.avatarUrl, source: "jira" },
+        update: { name: m.name, avatarUrl: m.avatarUrl, email: m.email ?? undefined },
+      });
+      const existing = await prisma.boardMembership.findUnique({
+        where: { personId_boardId: { personId: person.id, boardId: board.id } },
+      });
+      if (!existing) {
+        await prisma.boardMembership.create({ data: { personId: person.id, boardId: board.id, role: "DEVELOPER" } });
         added++;
       }
     }

@@ -12,7 +12,8 @@ type Person = {
   name: string;
   email: string | null;
   avatarUrl: string | null;
-  role: BoardRole;
+  role: BoardRole | null; // role on the current board; null if not a member here
+  isMember: boolean;
   isAdmin: boolean;
   source: string;
   active: boolean;
@@ -58,11 +59,21 @@ export default function PeopleSettings() {
   };
 
   const setRole = async (p: Person, role: BoardRole) => {
-    setPeople((prev) => prev?.map((x) => (x.id === p.id ? { ...x, role } : x)) || prev);
+    setPeople((prev) => prev?.map((x) => (x.id === p.id ? { ...x, role, isMember: true } : x)) || prev);
     await fetch(`/api/people/${p.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ role }),
+    });
+    load();
+  };
+
+  const removeFromBoard = async (p: Person) => {
+    if (!window.confirm(`Remove ${p.name} from this board? They keep their access to other boards.`)) return;
+    await fetch(`/api/people/${p.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ removeFromBoard: true }),
     });
     load();
   };
@@ -127,7 +138,7 @@ export default function PeopleSettings() {
         <div className="flex flex-col gap-[5px]">
           <h1 className="m-0 text-[25px] font-semibold tracking-[-0.025em]">People &amp; Roles</h1>
           <p className="m-0 text-[12.5px] text-muted">
-            Assign roles that control what each person can do. Sync pulls members from Jira; new people start as Developer.
+            Assign roles for this board. Sync pulls members from the board’s Jira project; new people start as Developer. Roles are per-board — someone can be PO here and a Developer elsewhere.
           </p>
           {people && (
             <div className="flex items-center gap-4 mt-1">
@@ -225,18 +236,28 @@ export default function PeopleSettings() {
                     </span>
                   </div>
                 </div>
-                <div>
+                <div className="flex items-center gap-2">
                   <select
-                    value={p.role}
+                    value={p.role ?? ""}
                     onChange={(e) => setRole(p, e.target.value as BoardRole)}
-                    className="h-[30px] px-2 text-[12.5px] border border-border bg-white outline-none cursor-pointer"
+                    className={`h-[30px] px-2 text-[12.5px] border border-border bg-white outline-none cursor-pointer ${!p.isMember ? "text-muted3" : ""}`}
                   >
+                    {!p.isMember && <option value="">Not on this board</option>}
                     {ROLES.map((r) => (
                       <option key={r} value={r}>
                         {ROLE_LABEL[r]}
                       </option>
                     ))}
                   </select>
+                  {p.isMember && (
+                    <button
+                      onClick={() => removeFromBoard(p)}
+                      title="Remove from this board"
+                      className="text-muted4 hover:text-accent text-[13px] opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      ⊘
+                    </button>
+                  )}
                 </div>
                 <div>
                   {p.active ? (

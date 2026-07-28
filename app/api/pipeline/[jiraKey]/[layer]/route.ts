@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getCurrentBoard } from "@/lib/board";
 import { requireCap } from "@/lib/guard";
 
 const VALID_LAYERS = ["ENGINE", "MIDDLEWARE", "FRONTEND"];
@@ -13,6 +14,8 @@ export async function PATCH(
 ) {
   const denied = await requireCap("pipeline_edit");
   if (denied) return denied;
+  const board = await getCurrentBoard();
+  if (!board) return NextResponse.json({ error: "no board" }, { status: 400 });
   try {
     const layer = params.layer.toUpperCase();
     if (!VALID_LAYERS.includes(layer))
@@ -31,12 +34,13 @@ export async function PATCH(
     const doneAt = status === "DONE" ? new Date() : status ? null : undefined;
 
     const existing = await prisma.layerTrack.findUnique({
-      where: { jiraKey_layer: { jiraKey: params.jiraKey, layer: layer as any } },
+      where: { boardId_jiraKey_layer: { boardId: board.id, jiraKey: params.jiraKey, layer: layer as any } },
     });
 
     const track = await prisma.layerTrack.upsert({
-      where: { jiraKey_layer: { jiraKey: params.jiraKey, layer: layer as any } },
+      where: { boardId_jiraKey_layer: { boardId: board.id, jiraKey: params.jiraKey, layer: layer as any } },
       create: {
+        boardId: board.id,
         jiraKey: params.jiraKey,
         layer: layer as any,
         status: (status as any) || "NOT_STARTED",

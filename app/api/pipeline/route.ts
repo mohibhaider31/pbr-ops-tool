@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { fetchActiveStories } from "@/lib/jira";
+import { getCurrentBoard } from "@/lib/board";
 import { prisma } from "@/lib/prisma";
 import { LAYERS, emptyCells, deriveHandoff, type LayerCells, type Layer } from "@/lib/pipeline";
 
@@ -9,17 +10,19 @@ import { LAYERS, emptyCells, deriveHandoff, type LayerCells, type Layer } from "
 // for the member keys (so titles/statuses stay fresh).
 export async function GET() {
   try {
-    const members = await prisma.pipelineItem.findMany({ orderBy: { addedAt: "asc" } });
+    const board = await getCurrentBoard();
+    if (!board) return NextResponse.json({ error: "no board" }, { status: 400 });
+    const members = await prisma.pipelineItem.findMany({ where: { boardId: board.id }, orderBy: { addedAt: "asc" } });
     const memberKeys = new Set(members.map((m) => m.jiraKey));
 
     if (memberKeys.size === 0) return NextResponse.json({ rows: [] });
 
     // Pull active stories from Jira and index by key for fresh summary/status.
-    const stories = await fetchActiveStories();
+    const stories = await fetchActiveStories({ projectKey: board.jiraProjectKey });
     const storyByKey = new Map(stories.map((s) => [s.key, s]));
 
     const tracks = await prisma.layerTrack.findMany({
-      where: { jiraKey: { in: [...memberKeys] } },
+      where: { boardId: board.id, jiraKey: { in: [...memberKeys] } },
     });
     const tracksByKey = new Map<string, typeof tracks>();
     for (const t of tracks) {
@@ -66,6 +69,8 @@ export async function GET() {
 // Add one or more stories to the pipeline.
 export async function POST(req: Request) {
   try {
+    const board = await getCurrentBoard();
+    if (!board) return NextResponse.json({ error: "no board" }, { status: 400 });
     const { jiraKeys }: { jiraKeys: string[] } = await req.json();
     if (!Array.isArray(jiraKeys) || jiraKeys.length === 0)
       return NextResponse.json({ error: "No keys provided" }, { status: 400 });
@@ -73,8 +78,8 @@ export async function POST(req: Request) {
     await prisma.$transaction(
       jiraKeys.map((jiraKey) =>
         prisma.pipelineItem.upsert({
-          where: { jiraKey },
-          create: { jiraKey },
+          where: { boardId_jiraKey: { boardId: board.id, jiraKey } },
+          create: { boardId: board.id, jiraKey },
           update: {},
         })
       )

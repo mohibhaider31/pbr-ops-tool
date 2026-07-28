@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getViewer } from "@/lib/viewer";
 import { getSession } from "@/lib/session";
 import { fetchMyJiraStories, fetchIssue } from "@/lib/jira";
+import { getCurrentBoard } from "@/lib/board";
 
 // Personal worklist for the logged-in user. Combines:
 //  - review assignments in this tool (matched by email), split into
@@ -14,6 +15,9 @@ export async function GET() {
   const viewer = await getViewer();
   if (!viewer) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
+  const board = await getCurrentBoard();
+  if (!board) return NextResponse.json({ error: "no board" }, { status: 400 });
+
   const session = await getSession();
   const auth = session ? { accessToken: session.accessToken, cloudId: session.cloudId } : undefined;
 
@@ -21,7 +25,7 @@ export async function GET() {
   const myEmail = viewer.email;
   const myAssignments = myEmail
     ? await prisma.assignee.findMany({
-        where: { email: myEmail },
+        where: { email: myEmail, story: { boardId: board.id } },
         include: {
           story: { include: { assignees: true, comments: true } },
         },
@@ -47,7 +51,7 @@ export async function GET() {
 
   // --- My open questions (questions I authored) ---
   const myQuestions = await prisma.comment.findMany({
-    where: { isQuestion: true, author: viewer.name },
+    where: { isQuestion: true, author: viewer.name, story: { boardId: board.id } },
     include: { story: true },
     orderBy: { createdAt: "desc" },
   });
@@ -60,7 +64,7 @@ export async function GET() {
   // --- Jira-assigned to me (by accountId) ---
   let jiraAssigned: any[] = [];
   try {
-    const stories = await fetchMyJiraStories(viewer.accountId, auth);
+    const stories = await fetchMyJiraStories(viewer.accountId, auth, { projectKey: board.jiraProjectKey });
     const doneStatuses = ["done", "closed", "resolved", "canceled", "cancelled", "frozen"];
     jiraAssigned = stories.map((s) => ({
       jiraKey: s.key,

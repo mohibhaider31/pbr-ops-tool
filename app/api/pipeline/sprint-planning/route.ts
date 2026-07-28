@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { fetchActiveStories } from "@/lib/jira";
 import { prisma } from "@/lib/prisma";
+import { getCurrentBoard } from "@/lib/board";
 import {
   emptyCells,
   deriveOwedLayers,
@@ -17,14 +18,16 @@ import {
 // question that motivated the tool.
 export async function GET() {
   try {
-    const members = await prisma.pipelineItem.findMany({ orderBy: { addedAt: "asc" } });
+    const board = await getCurrentBoard();
+    if (!board) return NextResponse.json({ error: "no board" }, { status: 400 });
+    const members = await prisma.pipelineItem.findMany({ where: { boardId: board.id }, orderBy: { addedAt: "asc" } });
     const memberKeys = members.map((m) => m.jiraKey);
     if (memberKeys.length === 0)
       return NextResponse.json({ groups: [], totalOwed: 0 });
 
     const [stories, tracks] = await Promise.all([
-      fetchActiveStories(),
-      prisma.layerTrack.findMany({ where: { jiraKey: { in: memberKeys } } }),
+      fetchActiveStories({ projectKey: board.jiraProjectKey }),
+      prisma.layerTrack.findMany({ where: { boardId: board.id, jiraKey: { in: memberKeys } } }),
     ]);
     const storyByKey = new Map(stories.map((s) => [s.key, s]));
 

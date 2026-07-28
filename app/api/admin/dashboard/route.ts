@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getViewer } from "@/lib/viewer";
+import { getCurrentBoard } from "@/lib/board";
 import { deriveHandoff, emptyCells, type LayerCells, type Layer } from "@/lib/pipeline";
 
 // Admin dashboard aggregates. Admin only.
@@ -9,6 +10,9 @@ export async function GET() {
   const viewer = await getViewer();
   if (!viewer) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (!viewer.isAdmin) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  const board = await getCurrentBoard();
+  if (!board) return NextResponse.json({ error: "no board" }, { status: 400 });
+  const B = board.id;
 
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
@@ -26,14 +30,14 @@ export async function GET() {
   ] = await Promise.all([
     prisma.person.count(),
     prisma.person.count({ where: { firstLoginAt: { not: null } } }),
-    prisma.story.count({ where: { stage: "IN_REVIEW" } }),
-    prisma.story.count({ where: { stage: "PBR_DONE" } }),
-    prisma.story.count({ where: { stage: "PBR_DONE", pbrDoneAt: { gte: weekAgo } } }),
-    prisma.comment.count({ where: { isQuestion: true } }),
-    prisma.pipelineItem.findMany(),
-    prisma.layerTrack.findMany(),
-    prisma.pokerSession.count(),
-    prisma.pokerItem.count({ where: { status: "DONE" } }),
+    prisma.story.count({ where: { boardId: B, stage: "IN_REVIEW" } }),
+    prisma.story.count({ where: { boardId: B, stage: "PBR_DONE" } }),
+    prisma.story.count({ where: { boardId: B, stage: "PBR_DONE", pbrDoneAt: { gte: weekAgo } } }),
+    prisma.comment.count({ where: { isQuestion: true, story: { boardId: B } } }),
+    prisma.pipelineItem.findMany({ where: { boardId: B } }),
+    prisma.layerTrack.findMany({ where: { boardId: B } }),
+    prisma.pokerSession.count({ where: { boardId: B } }),
+    prisma.pokerItem.count({ where: { status: "DONE", session: { boardId: B } } }),
   ]);
 
   // Pipeline handoff health
@@ -54,14 +58,14 @@ export async function GET() {
   // People needing onboarding (invited, never logged in)
   const invited = await prisma.person.findMany({
     where: { firstLoginAt: null },
-    select: { name: true, email: true, role: true },
+    select: { name: true, email: true },
     orderBy: { createdAt: "desc" },
     take: 8,
   });
 
   // Recently PBR-done stories
   const recentDone = await prisma.story.findMany({
-    where: { stage: "PBR_DONE", pbrDoneAt: { not: null } },
+    where: { boardId: B, stage: "PBR_DONE", pbrDoneAt: { not: null } },
     select: { jiraKey: true, pbrDoneAt: true },
     orderBy: { pbrDoneAt: "desc" },
     take: 6,
@@ -69,7 +73,7 @@ export async function GET() {
 
   // Reviewer load: who has the most open (not-done) review assignments
   const openAssignments = await prisma.assignee.findMany({
-    where: { markedDone: false },
+    where: { markedDone: false, story: { boardId: B } },
     select: { name: true },
   });
   const loadMap = new Map<string, number>();

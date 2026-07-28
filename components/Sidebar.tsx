@@ -21,14 +21,29 @@ function initialsOf(name: string) {
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const [user, setUser] = useState<{ name: string; email: string | null; role?: string; isAdmin?: boolean } | null>(null);
+  const [user, setUser] = useState<{ name: string; email: string | null; role?: string; isAdmin?: boolean; boardId?: string | null; boardName?: string | null } | null>(null);
+  const [boards, setBoards] = useState<{ id: string; name: string; jiraProjectKey: string }[]>([]);
+  const [boardMenuOpen, setBoardMenuOpen] = useState(false);
+  const [switching, setSwitching] = useState(false);
 
   useEffect(() => {
     fetch("/api/viewer")
       .then((r) => r.json())
-      .then((d) => setUser(d.viewer))
+      .then((d) => { setUser(d.viewer); setBoards(d.boards || []); })
       .catch(() => setUser(null));
   }, []);
+
+  const switchBoard = async (boardId: string) => {
+    if (boardId === user?.boardId) { setBoardMenuOpen(false); return; }
+    setSwitching(true);
+    await fetch("/api/board/switch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ boardId }),
+    });
+    // Full reload so every board-scoped view refetches for the new board.
+    window.location.href = "/";
+  };
 
   const roleLabel = user?.isAdmin
     ? "Admin"
@@ -52,16 +67,39 @@ export default function Sidebar() {
           <span className="text-[13px] font-semibold tracking-[.02em]">Ops Tool</span>
         </div>
 
-        <div className="px-3">
-          <div className="w-full border border-railBorder bg-railRaised px-[11px] py-[10px] flex items-center gap-[9px]">
+        <div className="px-3 relative">
+          <button
+            onClick={() => boards.length > 1 && setBoardMenuOpen((v) => !v)}
+            className={`w-full border border-railBorder bg-railRaised px-[11px] py-[10px] flex items-center gap-[9px] text-left ${boards.length > 1 ? "hover:border-railMuted2 cursor-pointer" : "cursor-default"}`}
+          >
             <span className="flex flex-col gap-[3px] flex-1 min-w-0">
               <span className="font-mono text-[9.5px] tracking-[.09em] text-railMuted">BOARD</span>
               <span className="text-[12.5px] font-semibold text-railText overflow-hidden text-ellipsis whitespace-nowrap">
-                RAE Risk Engine
+                {switching ? "Switching…" : user?.boardName || "—"}
               </span>
-              <span className="font-mono text-[10px] text-railMuted2">Jira · RAE</span>
+              <span className="font-mono text-[10px] text-railMuted2">
+                Jira · {boards.find((b) => b.id === user?.boardId)?.jiraProjectKey || "—"}
+              </span>
             </span>
-          </div>
+            {boards.length > 1 && (
+              <span className="font-mono text-[10px] text-railMuted2 flex-none">{boardMenuOpen ? "▴" : "▾"}</span>
+            )}
+          </button>
+
+          {boardMenuOpen && boards.length > 1 && (
+            <div className="absolute left-3 right-3 mt-1 z-20 border border-railBorder bg-rail shadow-xl">
+              {boards.map((b) => (
+                <button
+                  key={b.id}
+                  onClick={() => switchBoard(b.id)}
+                  className={`w-full text-left px-[11px] py-[9px] flex flex-col gap-[2px] hover:bg-railRaised transition-colors ${b.id === user?.boardId ? "bg-railRaised" : ""}`}
+                >
+                  <span className="text-[12.5px] font-medium text-railText overflow-hidden text-ellipsis whitespace-nowrap">{b.name}</span>
+                  <span className="font-mono text-[9.5px] text-railMuted2">Jira · {b.jiraProjectKey}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <nav className="flex flex-col gap-[2px]">

@@ -4,12 +4,15 @@ import { prisma } from "@/lib/prisma";
 import { getViewer } from "@/lib/viewer";
 import { can } from "@/lib/permissions";
 import { generateCode } from "@/lib/poker";
+import { getCurrentBoard } from "@/lib/board";
 
 // Create a poker session (a room). Stories are added afterwards to its queue.
 export async function POST() {
   const viewer = await getViewer();
   if (!viewer) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  if (!can({ role: viewer.role, isAdmin: viewer.isAdmin }, "poker_vote"))
+  const board = await getCurrentBoard();
+  if (!board) return NextResponse.json({ error: "no board" }, { status: 400 });
+  if (!can({ role: board.role ?? "VIEWER", isAdmin: board.isAdmin }, "poker_vote"))
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
   // Opportunistic cleanup: remove sessions untouched for over 7 days so old
@@ -29,7 +32,7 @@ export async function POST() {
     code = generateCode();
   }
   const session = await prisma.pokerSession.create({
-    data: { code, organizerId: viewer.accountId, organizerName: viewer.name },
+    data: { code, boardId: board.id, organizerId: viewer.accountId, organizerName: viewer.name },
   });
   return NextResponse.json({ code: session.code });
 }

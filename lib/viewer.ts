@@ -1,11 +1,10 @@
-// Resolves the current logged-in user's Person record (role + admin), creating
-// it on first login. Seeds the designated bootstrap account as Admin + PO.
+// Resolves the current logged-in user's Person record (identity + global admin),
+// creating it on first login. Seeds the bootstrap account as Admin. Product
+// roles are per-board now (see lib/board.ts + BoardMembership), not here.
 
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
-import type { BoardRole } from "@/lib/permissions";
 
-// The account that set up the tool: seeded as global Admin + PO on first login.
 const SEED_ADMIN_ACCOUNT_ID = process.env.SEED_ADMIN_ACCOUNT_ID || "";
 
 export type Viewer = {
@@ -14,7 +13,6 @@ export type Viewer = {
   name: string;
   email: string | null;
   avatarUrl: string | null;
-  role: BoardRole;
   isAdmin: boolean;
 };
 
@@ -22,49 +20,47 @@ export async function getViewer(): Promise<Viewer | null> {
   const session = await getSession();
   if (!session) return null;
 
-  // Find existing person by accountId, or by email (manual adds that hadn't
-  // logged in yet), else create with defaults.
   let person = await prisma.person.findUnique({ where: { accountId: session.accountId } });
 
   if (!person && session.email) {
     const byEmail = await prisma.person.findUnique({ where: { email: session.email } });
     if (byEmail) {
-      // Link the manual/email record to this Atlassian account on first login.
       person = await prisma.person.update({
         where: { id: byEmail.id },
-        data: {
-          accountId: session.accountId,
-          name: byEmail.name || session.name,
-          avatarUrl: session.avatarUrl,
-        },
+        data: { accountId: session.accountId, name: byEmail.name || session.name, avatarUrl: session.avatarUrl },
       });
     }
   }
 
+  const isSeed = !!SEED_ADMIN_ACCOUNT_ID && session.accountId === SEED_ADMIN_ACCOUNT_ID;
+
   if (!person) {
-    const isSeed = SEED_ADMIN_ACCOUNT_ID && session.accountId === SEED_ADMIN_ACCOUNT_ID;
     person = await prisma.person.create({
       data: {
         accountId: session.accountId,
         email: session.email,
         name: session.name,
         avatarUrl: session.avatarUrl,
-        role: isSeed ? "PO" : "DEVELOPER",
-        isAdmin: !!isSeed,
+        isAdmin: isSeed,
         source: "jira",
-        firstLoginAt: new Date(), // created during an authenticated request = first login
+        firstLoginAt: new Date(),
       },
     });
+    // Seed admin gets a PO membership on the default board so they can drive it.
+    if (isSeed) {
+      const def = await prisma.board.findFirst({ where: { isDefault: true } });
+      if (def) {
+        await prisma.boardMembership.upsert({
+          where: { personId_boardId: { personId: person.id, boardId: def.id } },
+          create: { personId: person.id, boardId: def.id, role: "PO" },
+          update: { role: "PO" },
+        });
+      }
+    }
   }
 
-  // Stamp first login for anyone resolved here who hasn't been marked yet
-  // (e.g. a Jira-synced or manually-added person logging in for the first
-  // time). This is the "has started using the tool" flag.
   if (!person.firstLoginAt) {
-    person = await prisma.person.update({
-      where: { id: person.id },
-      data: { firstLoginAt: new Date() },
-    });
+    person = await prisma.person.update({ where: { id: person.id }, data: { firstLoginAt: new Date() } });
   }
 
   return {
@@ -73,7 +69,6 @@ export async function getViewer(): Promise<Viewer | null> {
     name: person.name,
     email: person.email,
     avatarUrl: person.avatarUrl,
-    role: person.role as BoardRole,
     isAdmin: person.isAdmin,
   };
 }

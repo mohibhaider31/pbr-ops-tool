@@ -22,6 +22,7 @@ enum StoryStage {
 
 model Story {
   id            String     @id @default(cuid())
+  boardId       String     @default("") // scoped to a board (backfilled to RAE)
   jiraKey       String     @unique // e.g. RAE-1234
   priorityOrder Int        @default(0) // lower = higher priority, set by PO drag/reorder
   stage         StoryStage @default(BACKLOG)
@@ -34,6 +35,7 @@ model Story {
   updatedAt DateTime @updatedAt
 
   @@index([priorityOrder])
+  @@index([boardId])
 }
 
 model Assignee {
@@ -80,6 +82,7 @@ enum LayerStatus {
 
 model LayerTrack {
   id        String      @id @default(cuid())
+  boardId   String       @default("") // scoped to a board (backfilled to RAE)
   jiraKey   String       // e.g. RAE-1234 (the story this layer belongs to)
   layer     Layer
   status    LayerStatus  @default(NOT_STARTED)
@@ -89,7 +92,7 @@ model LayerTrack {
   updatedAt DateTime     @updatedAt
   createdAt DateTime     @default(now())
 
-  @@unique([jiraKey, layer])
+  @@unique([boardId, jiraKey, layer])
   @@index([jiraKey])
 }
 
@@ -99,8 +102,12 @@ model LayerTrack {
 // resumes exactly where it left off.
 model PipelineItem {
   id       String   @id @default(cuid())
-  jiraKey  String   @unique
+  boardId  String   @default("") // scoped to a board (backfilled to RAE)
+  jiraKey  String
   addedAt  DateTime @default(now())
+
+  @@unique([boardId, jiraKey])
+  @@index([boardId])
 }
 
 // Server-side auth sessions. The browser cookie holds only the small `id`;
@@ -123,13 +130,8 @@ model AuthSession {
   @@index([accountId])
 }
 
-// People and their roles. Roles are managed in-app (not from Jira, which has
-// no PO/BA concept for this team). Two axes:
-//  - isAdmin: global, tool-level (manage people/roles, admin dashboard later)
-//  - role: per-board product role (single board for now; extends to
-//    multi-board later by adding a board dimension)
-// Source is "jira" (auto-detected from board members) or "manual" (added by
-// email in Settings).
+// People. Identity + global admin flag. Product roles are now per-board via
+// BoardMembership (a person can be PO on one board, Developer on another).
 enum BoardRole {
   PO
   BA
@@ -143,12 +145,45 @@ model Person {
   email       String?   @unique
   name        String
   avatarUrl   String?
-  role        BoardRole @default(DEVELOPER)
-  isAdmin     Boolean   @default(false)
+  isAdmin     Boolean   @default(false) // global, tool-level admin
   source      String    @default("jira") // "jira" | "manual"
   firstLoginAt DateTime? // set on the person's first real login to the tool; null = invited but never used
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+
+  memberships BoardMembership[]
+}
+
+// A board maps 1:1 to a Jira project and carries its own workflow config.
+// Everything operational (stories, pipeline, poker) is scoped to a board.
+model Board {
+  id                 String  @id @default(cuid())
+  name               String
+  jiraProjectKey     String  @unique // e.g. RAE
+  backlogStatus      String  @default("To Do")
+  readyForDevStatus  String  @default("Ready For Dev")
+  pbrDonePath        String  @default("") // comma-separated transition chain to Ready For Dev
+  isDefault          Boolean @default(false) // the board new users land on
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  memberships BoardMembership[]
+}
+
+// A person's role on a specific board. Absence of a membership = no access to
+// that board.
+model BoardMembership {
+  id        String    @id @default(cuid())
+  personId  String
+  person    Person    @relation(fields: [personId], references: [id], onDelete: Cascade)
+  boardId   String
+  board     Board     @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  role      BoardRole @default(DEVELOPER)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([personId, boardId])
+  @@index([boardId])
 }
 
 // --- Planning Poker ---
@@ -170,6 +205,7 @@ enum PokerItemStatus {
 
 model PokerSession {
   id            String    @id @default(cuid())
+  boardId       String    @default("") // scoped to a board (backfilled to RAE)
   code          String    @unique
   organizerId   String    // accountId of the organizer
   organizerName String
