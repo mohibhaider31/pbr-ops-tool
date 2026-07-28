@@ -101,7 +101,7 @@ export default function MyWork() {
             {data.jiraAssigned.map((r) => (
               <StoryLine key={r.jiraKey} jiraKey={r.jiraKey} summary={r.summary} onClick={() => openDrawer(r.jiraKey)}
                 right={<>
-                  <Meta label={r.status} />
+                  <StatusLabel status={r.status} />
                   {r.storyPoints != null && <Meta label={`${r.storyPoints} pts`} />}
                 </>} />
             ))}
@@ -143,4 +143,19 @@ function StoryLine({ jiraKey, summary, right, onClick, muted }: { jiraKey: strin
 
 function Meta({ label, tone }: { label: string; tone?: "amber" }) {
   return <span className={`font-mono text-[10px] tracking-[.03em] px-[6px] py-[2px] border ${tone === "amber" ? "border-amberBorder text-amberText bg-amberBg" : "border-border text-muted2"}`}>{label}</span>;
+}
+
+// Jira status shown as a plain, clearly non-interactive label (a dot + text),
+// so it doesn't read like a clickable "Done" button.
+function StatusLabel({ status }: { status: string }) {
+  const s = status.toLowerCase();
+  const done = s === "done" || s === "closed" || s === "resolved";
+  const inProgress = s.includes("progress") || s.includes("review") || s.includes("dev");
+  const dot = done ? "bg-good" : inProgress ? "bg-key" : "bg-muted3";
+  return (
+    <span className="inline-flex items-center gap-[6px] text-[11px] text-muted2">
+      <span className={`w-[6px] h-[6px] rounded-full ${dot} inline-block`} />
+      {status}
+    </span>
+  );
 }
