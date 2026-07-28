@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
 const NAV = [
+  { label: "Dashboard", href: "/dashboard", soon: false, adminOnly: true },
   { label: "My Work", href: "/", soon: false },
   { label: "Backlog", href: "/backlog", soon: false },
   { label: "Pipeline", href: "/pipeline", soon: false },
@@ -64,7 +65,7 @@ export default function Sidebar() {
         </div>
 
         <nav className="flex flex-col gap-[2px]">
-          {NAV.filter((item) => item.label !== "Settings" || user?.isAdmin).map((item) => {
+          {NAV.filter((item) => (!item.adminOnly && item.label !== "Settings") || user?.isAdmin).map((item) => {
             const active = item.href === pathname;
             return (
               <Link
