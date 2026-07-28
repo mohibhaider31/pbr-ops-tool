@@ -7,6 +7,8 @@ import { NextRequest, NextResponse } from "next/server";
 // null, which the pages handle.
 const PUBLIC_PATHS = [
   "/login",
+  "/privacy",
+  "/terms",
   "/api/auth/login",
   "/api/auth/callback",
   "/api/auth/logout",
