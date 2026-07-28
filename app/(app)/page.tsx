@@ -1,5 +1,5 @@
-import BacklogBoard from "@/components/BacklogBoard";
+import MyWork from "@/components/MyWork";
 
 export default function Home() {
-  return <BacklogBoard />;
+  return <MyWork />;
 }
