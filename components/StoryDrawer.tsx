@@ -5,6 +5,7 @@ import type { Story } from "@/lib/types";
 import { STAGE_META } from "@/lib/stage";
 import { avatarColor, initials } from "@/lib/avatar";
 import Runner from "./Runner";
+import PeoplePicker from "./PeoplePicker";
 import { useViewer } from "@/lib/useViewer";
 
 export default function StoryDrawer({
@@ -19,7 +20,6 @@ export default function StoryDrawer({
   onToast: (msg: string) => void;
 }) {
   const { can } = useViewer();
-  const [assigneeInput, setAssigneeInput] = useState("");
   const [addOpen, setAddOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [mirror, setMirror] = useState(true);
@@ -39,30 +39,6 @@ export default function StoryDrawer({
   // "You" stands in for a real logged-in identity until auth is wired up.
   const myEmail = "you@local";
   const myAssignment = story.assignees.find((a) => a.email === myEmail);
-
-  const submitAssignees = async () => {
-    const names = assigneeInput
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .map((entry) => {
-        const match = entry.match(/^(.*)<(.+)>$/);
-        if (match) return { name: match[1].trim(), email: match[2].trim() };
-        return { name: entry, email: entry };
-      });
-    setBusy(true);
-    await fetch(`/api/stories/${story.jiraKey}/assign`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        assignees: [...story.assignees.map((a) => ({ name: a.name, email: a.email })), ...names],
-      }),
-    });
-    setAssigneeInput("");
-    setAddOpen(false);
-    setBusy(false);
-    onChanged();
-  };
 
   const removeAssignee = async (email: string) => {
     setBusy(true);
@@ -152,22 +128,26 @@ export default function StoryDrawer({
             </div>
 
             {addOpen && (
-              <div className="border border-border bg-cream p-[9px] flex flex-col gap-2">
-                <input
-                  value={assigneeInput}
-                  onChange={(e) => setAssigneeInput(e.target.value)}
-                  placeholder="Name <email>, Name <email>"
-                  className="text-[13px] px-[9px] py-[6px] border border-border bg-white outline-none"
-                  onKeyDown={(e) => e.key === "Enter" && submitAssignees()}
-                />
-                <button
-                  disabled={busy || !assigneeInput.trim()}
-                  onClick={submitAssignees}
-                  className="h-[30px] text-[12px] font-semibold bg-ink text-white disabled:opacity-40"
-                >
-                  Add
-                </button>
-              </div>
+              <PeoplePicker
+                excludeEmails={story.assignees.map((a) => a.email)}
+                placeholder="Search people to add as reviewer…"
+                onPick={async (person) => {
+                  setBusy(true);
+                  await fetch(`/api/stories/${story.jiraKey}/assign`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      assignees: [
+                        ...story.assignees.map((a) => ({ name: a.name, email: a.email })),
+                        person,
+                      ],
+                    }),
+                  });
+                  setBusy(false);
+                  setAddOpen(false);
+                  onChanged();
+                }}
+              />
             )}
 
             <div className="flex flex-col gap-[7px]">

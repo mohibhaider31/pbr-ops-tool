@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import { avatarColor, initials } from "@/lib/avatar";
 import Toast from "./Toast";
 import AddStoriesModal from "./AddStoriesModal";
+import PeoplePicker from "./PeoplePicker";
 import { useViewer } from "@/lib/useViewer";
 
 type LayerStatus = "NOT_STARTED" | "IN_PROGRESS" | "DONE" | "BLOCKED";
@@ -51,6 +52,7 @@ const HANDOFF_META: Record<string, { label: string; cls: string }> = {
 export default function PipelineBoard() {
   const { can } = useViewer();
   const [rows, setRows] = useState<Row[] | null>(null);
+  const [ownerTarget, setOwnerTarget] = useState<{ row: Row; cell: LayerCell } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [onlyStalls, setOnlyStalls] = useState(false);
@@ -97,14 +99,19 @@ export default function PipelineBoard() {
     load();
   };
 
-  const setOwner = async (row: Row, cell: LayerCell) => {
+  const setOwner = (row: Row, cell: LayerCell) => {
     if (!can("pipeline_edit")) return;
-    const owner = window.prompt(`Owner for ${row.jiraKey} · ${LAYER_LABEL[cell.layer]}`, cell.owner || "");
-    if (owner === null) return;
+    setOwnerTarget({ row, cell });
+  };
+
+  const applyOwner = async (name: string | null) => {
+    if (!ownerTarget) return;
+    const { row, cell } = ownerTarget;
+    setOwnerTarget(null);
     await fetch(`/api/pipeline/${row.jiraKey}/${cell.layer}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ owner: owner.trim() || null }),
+      body: JSON.stringify({ owner: name }),
     });
     load();
   };
@@ -332,6 +339,32 @@ export default function PipelineBoard() {
             load();
           }}
         />
+      )}
+      {ownerTarget && (
+        <div className="fixed inset-0 bg-ink/40 z-[40] flex items-center justify-center p-6" onClick={() => setOwnerTarget(null)}>
+          <div className="w-[380px] bg-white border border-[#C8C3B8]" onClick={(e) => e.stopPropagation()}>
+            <div className="px-5 pt-4 pb-3 border-b border-borderLight flex items-center justify-between">
+              <div className="flex flex-col">
+                <span className="font-mono text-[10px] tracking-[.11em] text-muted2">
+                  {ownerTarget.row.jiraKey} · {LAYER_LABEL[ownerTarget.cell.layer]}
+                </span>
+                <h3 className="m-0 text-[15px] font-semibold">Set owner</h3>
+              </div>
+              <button onClick={() => setOwnerTarget(null)} className="text-[18px] text-muted2 leading-none">×</button>
+            </div>
+            <div className="p-4 flex flex-col gap-3">
+              <PeoplePicker
+                placeholder="Search people…"
+                onPick={(person) => applyOwner(person.name)}
+              />
+              {ownerTarget.cell.owner && (
+                <button onClick={() => applyOwner(null)} className="text-[12px] text-muted hover:text-accent self-start">
+                  Clear owner ({ownerTarget.cell.owner})
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
       )}
       {toast && <Toast message={toast} />}
     </div>
