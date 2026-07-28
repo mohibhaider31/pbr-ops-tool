@@ -6,7 +6,7 @@ import Toast from "./Toast";
 
 type ReviewRow = { jiraKey: string; summary?: string; stage: string; myReviewDone: boolean; reviewProgress: string; questionCount: number };
 type QuestionRow = { jiraKey: string; text: string; createdAt: string };
-type JiraRow = { jiraKey: string; summary: string; status: string; storyPoints: number | null };
+type JiraRow = { jiraKey: string; summary: string; status: string; storyPoints: number | null; done: boolean };
 type Data = {
   viewerName: string;
   needsReview: ReviewRow[];
@@ -20,6 +20,7 @@ export default function MyWork() {
   const [error, setError] = useState<string | null>(null);
   const [openStory, setOpenStory] = useState<any | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [showDone, setShowDone] = useState(false);
 
   const load = useCallback(async () => {
     const res = await fetch("/api/my-work");
@@ -60,8 +61,8 @@ export default function MyWork() {
           </div>
         )}
 
-        {/* Needs my review */}
-        {data.needsReview.length > 0 && (
+        {/* Needs my review — with hint when empty */}
+        {data.needsReview.length > 0 ? (
           <Section title="Needs my review" count={data.needsReview.length} tone="accent">
             {data.needsReview.map((r) => (
               <StoryLine key={r.jiraKey} jiraKey={r.jiraKey} summary={r.summary} onClick={() => openDrawer(r.jiraKey)}
@@ -71,9 +72,11 @@ export default function MyWork() {
                 </>} />
             ))}
           </Section>
-        )}
+        ) : totalItems > 0 ? (
+          <EmptyHint title="Needs my review" tone="accent" text="Nothing assigned to you for review yet. When a PO or BA adds you as a reviewer on a story, it'll show up here to read and comment on." />
+        ) : null}
 
-        {/* Waiting on others */}
+        {/* Waiting on others (only when present — no hint needed) */}
         {data.waitingOnOthers.length > 0 && (
           <Section title="Waiting on others" count={data.waitingOnOthers.length} tone="muted">
             {data.waitingOnOthers.map((r) => (
@@ -83,8 +86,8 @@ export default function MyWork() {
           </Section>
         )}
 
-        {/* My open questions */}
-        {data.openQuestions.length > 0 && (
+        {/* My open questions — with hint when empty */}
+        {data.openQuestions.length > 0 ? (
           <Section title="My open questions" count={data.openQuestions.length} tone="amber">
             {data.openQuestions.map((q, i) => (
               <button key={i} onClick={() => openDrawer(q.jiraKey)} className="w-full text-left flex items-start gap-3 px-4 py-3 border-b border-borderFaint last:border-b-0 hover:bg-cream transition-colors">
@@ -93,20 +96,47 @@ export default function MyWork() {
               </button>
             ))}
           </Section>
-        )}
+        ) : totalItems > 0 ? (
+          <EmptyHint title="My open questions" tone="amber" text="No open questions from you. When you raise a question on a story, it'll be tracked here until it's resolved." />
+        ) : null}
 
-        {/* Jira-assigned to me */}
-        {data.jiraAssigned.length > 0 && (
-          <Section title="Assigned to me in Jira" count={data.jiraAssigned.length} tone="muted">
-            {data.jiraAssigned.map((r) => (
-              <StoryLine key={r.jiraKey} jiraKey={r.jiraKey} summary={r.summary} onClick={() => openDrawer(r.jiraKey)}
-                right={<>
-                  <StatusLabel status={r.status} />
-                  {r.storyPoints != null && <Meta label={`${r.storyPoints} pts`} />}
-                </>} />
-            ))}
-          </Section>
-        )}
+        {/* Jira-assigned to me — active first, done collapsed */}
+        {data.jiraAssigned.length > 0 && (() => {
+          const active = data.jiraAssigned.filter((r) => !r.done);
+          const done = data.jiraAssigned.filter((r) => r.done);
+          return (
+            <Section title="Assigned to me in Jira" count={data.jiraAssigned.length} tone="muted">
+              {active.map((r) => (
+                <StoryLine key={r.jiraKey} jiraKey={r.jiraKey} summary={r.summary} onClick={() => openDrawer(r.jiraKey)}
+                  right={<>
+                    <StatusLabel status={r.status} />
+                    {r.storyPoints != null && <Meta label={`${r.storyPoints} pts`} />}
+                  </>} />
+              ))}
+              {active.length === 0 && done.length > 0 && (
+                <div className="px-4 py-3 text-[12.5px] text-muted3">No active stories — all {done.length} assigned to you are completed.</div>
+              )}
+              {done.length > 0 && (
+                <>
+                  <button
+                    onClick={() => setShowDone((v) => !v)}
+                    className="w-full text-left px-4 h-[38px] flex items-center gap-2 border-t border-borderFaint bg-cream/50 hover:bg-cream transition-colors"
+                  >
+                    <span className="font-mono text-[10px] tracking-[.06em] text-muted2">{showDone ? "▾" : "▸"}</span>
+                    <span className="font-mono text-[10.5px] tracking-[.06em] text-muted2">COMPLETED ({done.length})</span>
+                  </button>
+                  {showDone && done.map((r) => (
+                    <StoryLine key={r.jiraKey} jiraKey={r.jiraKey} summary={r.summary} onClick={() => openDrawer(r.jiraKey)} muted
+                      right={<>
+                        <StatusLabel status={r.status} />
+                        {r.storyPoints != null && <Meta label={`${r.storyPoints} pts`} />}
+                      </>} />
+                  ))}
+                </>
+              )}
+            </Section>
+          );
+        })()}
       </div>
 
       {openStory && (
@@ -143,6 +173,22 @@ function StoryLine({ jiraKey, summary, right, onClick, muted }: { jiraKey: strin
 
 function Meta({ label, tone }: { label: string; tone?: "amber" }) {
   return <span className={`font-mono text-[10px] tracking-[.03em] px-[6px] py-[2px] border ${tone === "amber" ? "border-amberBorder text-amberText bg-amberBg" : "border-border text-muted2"}`}>{label}</span>;
+}
+
+// Shown when a section has no items, to explain what will appear there.
+function EmptyHint({ title, text, tone }: { title: string; text: string; tone: "accent" | "amber" | "muted" }) {
+  const dot = tone === "accent" ? "bg-accent/40" : tone === "amber" ? "bg-amberText/40" : "bg-muted3";
+  return (
+    <section className="flex flex-col gap-2">
+      <div className="flex items-center gap-[9px]">
+        <span className={`w-[7px] h-[7px] rounded-full ${dot}`} />
+        <h2 className="m-0 text-[15px] font-semibold text-muted2">{title}</h2>
+      </div>
+      <div className="border border-dashed border-border bg-cream/40 px-4 py-3">
+        <p className="m-0 text-[12.5px] text-muted3 leading-[1.55]">{text}</p>
+      </div>
+    </section>
+  );
 }
 
 // Jira status shown as a plain, clearly non-interactive label (a dot + text),

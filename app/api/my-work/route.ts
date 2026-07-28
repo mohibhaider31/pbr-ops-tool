@@ -61,11 +61,13 @@ export async function GET() {
   let jiraAssigned: any[] = [];
   try {
     const stories = await fetchMyJiraStories(viewer.accountId, auth);
+    const doneStatuses = ["done", "closed", "resolved", "canceled", "cancelled", "frozen"];
     jiraAssigned = stories.map((s) => ({
       jiraKey: s.key,
       summary: s.summary,
       status: s.status,
       storyPoints: s.storyPoints,
+      done: doneStatuses.includes((s.status || "").toLowerCase()),
     }));
   } catch (e) {
     // Non-fatal: if Jira lookup fails, still return the tool-side sections.
