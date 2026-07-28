@@ -78,6 +78,12 @@ export default function PokerRoom({ code }: { code: string }) {
     setBusy(false); load();
   };
 
+  const endSession = async () => {
+    if (!window.confirm("End this session for everyone? This clears the room and can't be undone.")) return;
+    await fetch(`/api/poker/${code}/end`, { method: "POST" });
+    router.push("/poker");
+  };
+
   if (notFound) return (
     <div className="flex-1 flex items-center justify-center p-8">
       <div className="border border-dashed border-border bg-cream px-8 py-10 text-center max-w-[420px]">
@@ -152,6 +158,14 @@ export default function PokerRoom({ code }: { code: string }) {
             >{s.code}</button>
             <span className="text-[11.5px] text-muted2">· {s.organizerName}</span>
           </div>
+          {s.isOrganizer && (
+            <button
+              onClick={endSession}
+              className="text-[12px] text-muted2 hover:text-accent border border-border hover:border-accent px-3 h-[30px] transition-colors flex-none"
+            >
+              End session
+            </button>
+          )}
         </header>
 
         {!cur ? (

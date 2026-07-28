@@ -12,6 +12,16 @@ export async function POST() {
   if (!can({ role: viewer.role, isAdmin: viewer.isAdmin }, "poker_vote"))
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
+  // Opportunistic cleanup: remove sessions untouched for over 7 days so old
+  // rooms don't accumulate. Cascades clear their items and votes. Runs here
+  // (rather than a cron) since it's cheap and create is infrequent.
+  try {
+    const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    await prisma.pokerSession.deleteMany({ where: { updatedAt: { lt: cutoff } } });
+  } catch {
+    // non-fatal
+  }
+
   let code = generateCode();
   for (let i = 0; i < 5; i++) {
     const clash = await prisma.pokerSession.findUnique({ where: { code } });
