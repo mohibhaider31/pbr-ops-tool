@@ -314,8 +314,22 @@ export async function fetchMyJiraStories(accountId: string, auth?: JiraAuth, opt
 
 // Fetch ALL stories in the project regardless of status (full backlog view).
 // Used by the backlog board's "all statuses" mode with client-side filtering.
+// Short-lived in-memory cache of the full story list per project. The full
+// project scan is expensive (several sequential Jira pages), and actions like
+// assigning a reviewer trigger a backlog reload immediately after — without a
+// cache each of those would re-scan the whole project. 30s keeps it fresh
+// enough while making back-to-back reloads instant. Serverless instances are
+// short-lived so this self-expires; it's a best-effort speedup, not a
+// correctness dependency.
+const _storyCache = new Map<string, { at: number; data: JiraIssue[] }>();
+const STORY_CACHE_MS = 30_000;
+
 export async function fetchAllStories(opts?: JiraProjectOpts): Promise<JiraIssue[]> {
   const projectKey = opts?.projectKey || DEFAULT_PROJECT;
+
+  const cached = _storyCache.get(projectKey);
+  if (cached && Date.now() - cached.at < STORY_CACHE_MS) return cached.data;
+
   const jql = `project = ${projectKey} AND issuetype = Story ORDER BY created ASC`;
   const issues: any[] = [];
   let nextPageToken: string | undefined;
@@ -324,7 +338,7 @@ export async function fetchAllStories(opts?: JiraProjectOpts): Promise<JiraIssue
       method: "POST",
       body: JSON.stringify({
         jql,
-        maxResults: 100,
+        maxResults: 250, // fewer round-trips than 100 for large projects
         fields: BACKLOG_FIELDS,
         ...(nextPageToken ? { nextPageToken } : {}),
       }),
@@ -332,5 +346,15 @@ export async function fetchAllStories(opts?: JiraProjectOpts): Promise<JiraIssue
     issues.push(...(data.issues || []));
     nextPageToken = data.isLast ? undefined : data.nextPageToken;
   } while (nextPageToken);
-  return issues.map(mapIssue);
+
+  const mapped = issues.map(mapIssue);
+  _storyCache.set(projectKey, { at: Date.now(), data: mapped });
+  return mapped;
+}
+
+// Let mutations invalidate the cache so a change is reflected on next load
+// rather than waiting up to 30s.
+export function invalidateStoryCache(projectKey?: string) {
+  if (projectKey) _storyCache.delete(projectKey);
+  else _storyCache.clear();
 }

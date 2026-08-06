@@ -132,9 +132,13 @@ export default function StoryDrawer({
                 multi
                 excludeEmails={story.assignees.map((a) => a.email)}
                 placeholder="Search people to add as reviewers…"
-                onPickMany={async (people) => {
-                  setBusy(true);
-                  await fetch(`/api/stories/${story.jiraKey}/assign`, {
+                onPickMany={(people) => {
+                  // Close picker immediately; fire the request in the
+                  // background and refresh without blocking the UI. Avoids
+                  // the long wait the full-backlog reload used to cause.
+                  setAddOpen(false);
+                  onToast(`Adding ${people.length} reviewer${people.length > 1 ? "s" : ""}…`);
+                  fetch(`/api/stories/${story.jiraKey}/assign`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
@@ -143,10 +147,9 @@ export default function StoryDrawer({
                         ...people,
                       ],
                     }),
-                  });
-                  setBusy(false);
-                  setAddOpen(false);
-                  onChanged();
+                  })
+                    .then(() => onChanged())
+                    .catch(() => onToast("Couldn't assign — try again"));
                 }}
               />
             )}
