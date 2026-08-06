@@ -9,9 +9,11 @@ const PUBLIC_PATHS = [
   "/login",
   "/privacy",
   "/terms",
+  "/poker-guest",
   "/api/auth/login",
   "/api/auth/callback",
   "/api/auth/logout",
+  "/api/poker/guest/join",
 ];
 
 export function middleware(req: NextRequest) {
@@ -27,6 +29,18 @@ export function middleware(req: NextRequest) {
   }
 
   const hasSession = req.cookies.has("pbr_session");
+  const hasGuest = req.cookies.has("pbr_guest");
+
+  // Guests (guest cookie, no full session) may reach only the poker session
+  // read + vote endpoints. Everything else still requires a real session.
+  // The routes themselves enforce that a guest can only read/vote (never run
+  // organizer actions), so this just lets the request through to that logic.
+  if (!hasSession && hasGuest && pathname.startsWith("/api/poker/")) {
+    const isVote = /^\/api\/poker\/[^/]+\/item\/[^/]+\/vote$/.test(pathname);
+    const isRead = /^\/api\/poker\/[^/]+$/.test(pathname);
+    if (isVote || isRead) return NextResponse.next();
+  }
+
   if (!hasSession) {
     // For API calls, return 401 rather than redirecting (cleaner for fetch).
     if (pathname.startsWith("/api/")) {

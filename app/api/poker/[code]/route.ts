@@ -1,12 +1,12 @@
 export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getViewer } from "@/lib/viewer";
+import { getParticipant } from "@/lib/pokerParticipant";
 import { analyze } from "@/lib/poker";
 
 export async function GET(_req: Request, { params }: { params: { code: string } }) {
-  const viewer = await getViewer();
-  if (!viewer) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const me = await getParticipant(params.code);
+  if (!me) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const session = await prisma.pokerSession.findUnique({
     where: { code: params.code },
@@ -14,7 +14,8 @@ export async function GET(_req: Request, { params }: { params: { code: string } 
   });
   if (!session) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
-  const isOrganizer = session.organizerId === viewer.accountId;
+  // Only the authenticated organizer gets organizer controls; guests never do.
+  const isOrganizer = !me.isGuest && session.organizerId === me.accountId;
   const current = session.items.find((i) => i.id === session.currentItemId) || null;
 
   let currentPayload: any = null;
@@ -25,7 +26,7 @@ export async function GET(_req: Request, { params }: { params: { code: string } 
       voterId: v.voterId,
       voterName: v.voterName,
       voted: true,
-      card: revealed || v.voterId === viewer.accountId ? v.card : null,
+      card: revealed || v.voterId === me.voterId ? v.card : null,
     }));
     const analysis = revealed
       ? analyze(roundVotes.map((v) => ({ voterId: v.voterId, voterName: v.voterName, card: v.card })))
@@ -37,7 +38,7 @@ export async function GET(_req: Request, { params }: { params: { code: string } 
       state: current.state,
       round: current.round,
       finalPoints: current.finalPoints,
-      myVote: roundVotes.find((v) => v.voterId === viewer.accountId)?.card ?? null,
+      myVote: roundVotes.find((v) => v.voterId === me.voterId)?.card ?? null,
       participants,
       analysis,
     };
@@ -47,6 +48,7 @@ export async function GET(_req: Request, { params }: { params: { code: string } 
     code: session.code,
     organizerName: session.organizerName,
     isOrganizer,
+    isGuest: me.isGuest,
     queue: session.items.map((i) => ({
       itemId: i.id,
       jiraKey: i.jiraKey,

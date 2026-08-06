@@ -158,14 +158,27 @@ export default function PokerRoom({ code }: { code: string }) {
             >{s.code}</button>
             <span className="text-[11.5px] text-muted2">· {s.organizerName}</span>
           </div>
-          {s.isOrganizer && (
+          <div className="flex items-center gap-2 flex-none">
             <button
-              onClick={endSession}
-              className="text-[12px] text-muted2 hover:text-accent border border-border hover:border-accent px-3 h-[30px] transition-colors flex-none"
+              onClick={() => {
+                const url = `${window.location.origin}/poker-guest`;
+                navigator.clipboard?.writeText(url);
+                showToast(`Guest link copied — share it with the code ${s.code}`);
+              }}
+              className="text-[12px] text-muted2 hover:text-key border border-border hover:border-key px-3 h-[30px] transition-colors"
+              title="Copy a link for guests (they join with the session code, vote only)"
             >
-              End session
+              Guest link
             </button>
-          )}
+            {s.isOrganizer && (
+              <button
+                onClick={endSession}
+                className="text-[12px] text-muted2 hover:text-accent border border-border hover:border-accent px-3 h-[30px] transition-colors"
+              >
+                End session
+              </button>
+            )}
+          </div>
         </header>
 
         {!cur ? (
