@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { usePokerChannel } from "@/lib/usePusher";
 import { DECK } from "@/lib/poker";
 import { avatarColor, initials } from "@/lib/avatar";
@@ -19,6 +19,7 @@ type Analysis = {
 export default function GuestPokerRoom({ code, name }: { code: string; name: string }) {
   const [state, setState] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const reloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -31,10 +32,19 @@ export default function GuestPokerRoom({ code, name }: { code: string; name: str
     }
   }, [code]);
 
-  useEffect(() => { load(); }, [load]);
+  // Coalesce realtime bursts into one refetch (see PokerRoom for rationale).
+  const debouncedLoad = useCallback(() => {
+    if (reloadTimer.current) clearTimeout(reloadTimer.current);
+    reloadTimer.current = setTimeout(() => load(), 250);
+  }, [load]);
+
+  useEffect(() => {
+    load();
+    return () => { if (reloadTimer.current) clearTimeout(reloadTimer.current); };
+  }, [load]);
   usePokerChannel(code, {
-    "vote-update": () => load(), "revealed": () => load(), "re-vote": () => load(),
-    "accepted": () => load(), "queue-update": () => load(), "navigate": () => load(),
+    "vote-update": () => debouncedLoad(), "revealed": () => debouncedLoad(), "re-vote": () => debouncedLoad(),
+    "accepted": () => debouncedLoad(), "queue-update": () => debouncedLoad(), "navigate": () => debouncedLoad(),
   });
 
   const cur = state?.current;
@@ -65,7 +75,22 @@ export default function GuestPokerRoom({ code, name }: { code: string; name: str
       </div>
     );
   }
-  if (!state) return <div className="min-h-screen bg-paper flex items-center justify-center text-sm text-muted2 font-mono">Loading…</div>;
+  if (!state) return (
+    <div className="min-h-screen w-full bg-paper flex flex-col">
+      <div className="px-6 py-4 border-b border-border flex items-center gap-[10px]">
+        <span className="bg-accent text-white font-mono font-bold text-[12px] tracking-[.06em] px-[8px] py-[4px]">PBR</span>
+        <div className="h-[10px] w-[120px] bg-borderLight animate-pulse" />
+      </div>
+      <div className="flex-1 flex items-center justify-center">
+        <div className="relative" style={{ width: 440, height: 440 }}>
+          <div className="absolute rounded-full bg-borderLight animate-pulse" style={{ width: 232, height: 232, left: 104, top: 104 }} />
+        </div>
+      </div>
+      <div className="border-t border-borderLight px-6 py-4 flex justify-center gap-2">
+        {Array.from({ length: 8 }).map((_, i) => <div key={i} className="w-[46px] h-[62px] bg-borderLight animate-pulse" />)}
+      </div>
+    </div>
+  );
 
   const a: Analysis | null = cur?.analysis ?? null;
 

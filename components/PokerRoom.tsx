@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { avatarColor, initials } from "@/lib/avatar";
 import { DECK } from "@/lib/poker";
@@ -30,18 +30,43 @@ export default function PokerRoom({ code }: { code: string }) {
   const [toast, setToast] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const reloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(async () => {
-    const res = await fetch(`/api/poker/${code}`);
-    if (res.status === 404) { setNotFound(true); return; }
-    const data = await res.json();
-    if (!data.error) setS(data);
+    try {
+      setSyncing(true);
+      const res = await fetch(`/api/poker/${code}`);
+      if (res.status === 404) { setNotFound(true); return; }
+      const data = await res.json();
+      if (!data.error) setS(data);
+    } finally {
+      setSyncing(false);
+    }
   }, [code]);
 
-  useEffect(() => { load(); }, [load]);
+  // Coalesce bursts of realtime events (many people voting at once fire many
+  // vote-update events) into a single refetch, instead of one full reload per
+  // event. This was the main source of poker slowness.
+  const debouncedLoad = useCallback(() => {
+    if (reloadTimer.current) clearTimeout(reloadTimer.current);
+    reloadTimer.current = setTimeout(() => load(), 250);
+  }, [load]);
+
+  useEffect(() => {
+    load();
+    return () => { if (reloadTimer.current) clearTimeout(reloadTimer.current); };
+  }, [load]);
+
   usePokerChannel(code, {
-    "vote-update": () => load(), "revealed": () => load(), "re-vote": () => load(),
-    "accepted": () => load(), "queue-update": () => load(), "navigate": () => load(),
+    // Vote updates are high-frequency → debounced. State-change events refresh
+    // promptly (still via debounce, which collapses duplicates harmlessly).
+    "vote-update": () => debouncedLoad(),
+    "revealed": () => debouncedLoad(),
+    "re-vote": () => debouncedLoad(),
+    "accepted": () => debouncedLoad(),
+    "queue-update": () => debouncedLoad(),
+    "navigate": () => debouncedLoad(),
   });
 
   const showToast = (m: string) => { setToast(m); setTimeout(() => setToast(null), 2600); };
@@ -93,7 +118,49 @@ export default function PokerRoom({ code }: { code: string }) {
       </div>
     </div>
   );
-  if (!s) return <div className="p-8 text-sm text-muted2 font-mono">Loading session…</div>;
+  if (!s) return (
+    <div className="flex-1 flex overflow-hidden">
+      {/* Queue sidebar skeleton */}
+      <div className="w-[240px] flex-none border-r border-border bg-cream/40 flex flex-col">
+        <div className="px-4 pt-4 pb-3 border-b border-borderLight">
+          <div className="h-[9px] w-[50px] bg-borderLight animate-pulse" />
+        </div>
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="px-4 py-[10px] border-b border-borderFaint flex flex-col gap-2">
+            <div className="h-[9px] w-[54px] bg-borderLight animate-pulse" />
+            <div className="h-[9px] bg-borderLight animate-pulse" style={{ width: `${60 + ((i * 11) % 30)}%` }} />
+          </div>
+        ))}
+      </div>
+      {/* Table skeleton */}
+      <div className="flex-1 flex flex-col">
+        <div className="px-[26px] py-3 border-b border-borderLight flex items-center gap-3">
+          <div className="h-[11px] w-[60px] bg-borderLight animate-pulse" />
+          <div className="h-[11px] w-[240px] bg-borderLight animate-pulse" />
+        </div>
+        <div className="flex-1 flex items-center justify-center">
+          <div className="relative" style={{ width: 440, height: 440 }}>
+            <div className="absolute rounded-full bg-borderLight animate-pulse" style={{ width: 232, height: 232, left: 104, top: 104 }} />
+            {Array.from({ length: 6 }).map((_, i) => {
+              const angle = (i / 6) * 2 * Math.PI - Math.PI / 2;
+              const x = Math.cos(angle) * 168, y = Math.sin(angle) * 168;
+              return (
+                <div key={i} className="absolute flex flex-col items-center gap-1" style={{ left: 220 + x - 28, top: 220 + y - 40, width: 56 }}>
+                  <div className="w-[30px] h-[42px] bg-borderLight animate-pulse" />
+                  <div className="w-[34px] h-[34px] rounded-full bg-borderLight animate-pulse" />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        <div className="px-6 py-4 border-t border-borderLight flex justify-center gap-2">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="w-[46px] h-[62px] bg-borderLight animate-pulse" />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 
   const revealed = cur?.state === "REVEALED";
   const votedCount = cur?.participants.filter((p) => p.voted).length ?? 0;
@@ -157,6 +224,7 @@ export default function PokerRoom({ code }: { code: string }) {
               title="Copy invite code"
             >{s.code}</button>
             <span className="text-[11.5px] text-muted2">· {s.organizerName}</span>
+            {syncing && <span className="w-[6px] h-[6px] rounded-full bg-key/50 animate-pulse flex-none" title="Syncing…" />}
           </div>
           <div className="flex items-center gap-2 flex-none">
             <button
