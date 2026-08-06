@@ -13,6 +13,10 @@ type Filter = "all" | "unassigned" | "assigned" | "in_review" | "questions" | "d
 export default function BacklogBoard() {
   const { can } = useViewer();
   const [stories, setStories] = useState<Story[] | null>(null);
+  const [statuses, setStatuses] = useState<string[]>([]);
+  const [statusFilter, setStatusFilter] = useState<Set<string>>(new Set());
+  const [sortBy, setSortBy] = useState<"priority" | "summary" | "status" | "key" | "points">("priority");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
@@ -26,6 +30,7 @@ export default function BacklogBoard() {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       setStories(data.stories);
+      setStatuses(data.statuses || []);
       setError(null);
     } catch (e: any) {
       setError(e.message);
@@ -50,26 +55,58 @@ export default function BacklogBoard() {
         (s) => s.jiraKey.toLowerCase().includes(q) || s.jira.summary.toLowerCase().includes(q)
       );
     }
+    // Jira status multi-select (empty set = all statuses)
+    if (statusFilter.size > 0) {
+      list = list.filter((s) => statusFilter.has(s.jira.status));
+    }
+    // Tool workflow-stage chips
     switch (filter) {
       case "unassigned":
-        return list.filter((s) => s.assignees.length === 0);
+        list = list.filter((s) => s.assignees.length === 0);
+        break;
       case "assigned":
-        return list.filter((s) => s.assignees.length > 0 && s.stage !== "PBR_DONE");
+        list = list.filter((s) => s.assignees.length > 0 && s.stage !== "PBR_DONE");
+        break;
       case "in_review":
-        return list.filter((s) => s.stage === "IN_REVIEW");
+        list = list.filter((s) => s.stage === "IN_REVIEW");
+        break;
       case "questions":
-        return list.filter((s) => s.comments.some((c) => c.isQuestion));
+        list = list.filter((s) => s.comments.some((c) => c.isQuestion));
+        break;
       case "done":
-        return list.filter((s) => s.stage === "PBR_DONE");
-      default:
-        return list;
+        list = list.filter((s) => s.stage === "PBR_DONE");
+        break;
     }
-  }, [stories, query, filter]);
+    // Sorting. "priority" preserves the manual drag order (priorityOrder).
+    if (sortBy !== "priority") {
+      const dir = sortDir === "asc" ? 1 : -1;
+      list = [...list].sort((a, b) => {
+        let av: string | number, bv: string | number;
+        switch (sortBy) {
+          case "summary": av = a.jira.summary.toLowerCase(); bv = b.jira.summary.toLowerCase(); break;
+          case "status": av = a.jira.status.toLowerCase(); bv = b.jira.status.toLowerCase(); break;
+          case "key":
+            // Sort by numeric part of the key so RAE-9 < RAE-100
+            av = parseInt(a.jiraKey.split("-")[1] || "0", 10);
+            bv = parseInt(b.jiraKey.split("-")[1] || "0", 10);
+            break;
+          case "points": av = a.jira.storyPoints ?? -1; bv = b.jira.storyPoints ?? -1; break;
+          default: av = 0; bv = 0;
+        }
+        if (av < bv) return -1 * dir;
+        if (av > bv) return 1 * dir;
+        return 0;
+      });
+    } else if (sortDir === "desc") {
+      list = [...list].reverse();
+    }
+    return list;
+  }, [stories, query, filter, statusFilter, sortBy, sortDir]);
 
   const stats = useMemo(() => {
     const all = stories || [];
     return [
-      { label: "TOTAL BACKLOG", value: all.length, note: "in To Do" },
+      { label: "TOTAL STORIES", value: all.length, note: "all statuses" },
       { label: "ASSIGNED", value: all.filter((s) => s.assignees.length > 0).length, note: "have reviewers" },
       { label: "READY FOR PBR", value: all.filter((s) => s.stage === "IN_REVIEW").length, note: "all reviewed" },
       { label: "PBR DONE", value: all.filter((s) => s.stage === "PBR_DONE").length, note: "this session" },
@@ -131,7 +168,7 @@ export default function BacklogBoard() {
         <div className="flex flex-col gap-[5px]">
           <h1 className="m-0 text-[25px] font-semibold tracking-[-0.025em]">Backlog Review</h1>
           <p className="m-0 text-[12.5px] text-muted">
-            Prioritize, assign, and clear stories for PBR.
+            Browse, filter, and triage all stories. Prioritize and clear for PBR.
           </p>
         </div>
         <div className="flex items-center gap-[10px]">
@@ -182,9 +219,13 @@ export default function BacklogBoard() {
             </button>
           ))}
         </div>
-        <span className="font-mono text-[11px] text-muted2 tracking-[.04em]">
-          {filtered.length} shown
-        </span>
+        <div className="flex items-center gap-2 flex-none">
+          <StatusFilterDropdown statuses={statuses} selected={statusFilter} onChange={setStatusFilter} />
+          <SortControl sortBy={sortBy} sortDir={sortDir} onSortBy={setSortBy} onToggleDir={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))} />
+          <span className="font-mono text-[11px] text-muted2 tracking-[.04em] whitespace-nowrap">
+            {filtered.length} shown
+          </span>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto overflow-x-hidden">
@@ -209,14 +250,16 @@ export default function BacklogBoard() {
           const meta = STAGE_META[story.stage];
           const doneCount = story.assignees.filter((a) => a.markedDone).length;
           const qCount = story.comments.filter((c) => c.isQuestion).length;
+          const canDrag = can("prioritize") && sortBy === "priority" && !query.trim() && statusFilter.size === 0 && filter === "all";
 
           return (
             <div
               key={story.jiraKey}
-              draggable={can("prioritize")}
-              onDragStart={() => setDragKey(story.jiraKey)}
-              onDragOver={(e) => e.preventDefault()}
+              draggable={canDrag}
+              onDragStart={() => canDrag && setDragKey(story.jiraKey)}
+              onDragOver={(e) => canDrag && e.preventDefault()}
               onDrop={(e) => {
+                if (!canDrag) return;
                 e.preventDefault();
                 if (dragKey) reorder(dragKey, story.jiraKey);
                 setDragKey(null);
@@ -227,12 +270,13 @@ export default function BacklogBoard() {
               style={{ gridTemplateColumns: "46px 64px minmax(160px,1fr) 34px 112px 34px 130px" }}
             >
               <div className="flex items-center gap-[7px]">
-                {can("prioritize") && <span className="text-muted4 text-[13px] cursor-grab select-none">⠿</span>}
+                {canDrag && <span className="text-muted4 text-[13px] cursor-grab select-none">⠿</span>}
                 <span className="font-mono text-[11px] text-muted4">{idx + 1}</span>
               </div>
               <span className="font-mono text-[12px] font-medium text-key">{story.jiraKey}</span>
-              <span className="text-[13.5px] pr-3 overflow-hidden text-ellipsis whitespace-nowrap">
-                {story.jira.summary}
+              <span className="text-[13.5px] pr-3 overflow-hidden text-ellipsis whitespace-nowrap flex items-center gap-2">
+                <span className="overflow-hidden text-ellipsis whitespace-nowrap">{story.jira.summary}</span>
+                <span className="font-mono text-[9px] tracking-[.04em] text-muted3 border border-borderLight px-[5px] py-[1px] flex-none uppercase">{story.jira.status}</span>
               </span>
               <span className="font-mono text-[12px] text-right text-ink">
                 {story.jira.storyPoints ?? "–"}
@@ -283,6 +327,104 @@ export default function BacklogBoard() {
         />
       )}
       {toast && <Toast message={toast} />}
+    </div>
+  );
+}
+
+// Multi-select dropdown of Jira statuses. Empty selection = all statuses.
+function StatusFilterDropdown({
+  statuses,
+  selected,
+  onChange,
+}: {
+  statuses: string[];
+  selected: Set<string>;
+  onChange: (s: Set<string>) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const toggle = (status: string) => {
+    const next = new Set(selected);
+    next.has(status) ? next.delete(status) : next.add(status);
+    onChange(next);
+  };
+  const label = selected.size === 0 ? "All statuses" : `${selected.size} status${selected.size > 1 ? "es" : ""}`;
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className={`flex items-center gap-2 h-[28px] px-[11px] text-[12px] border transition-colors ${selected.size > 0 ? "bg-ink text-white border-ink" : "bg-white text-muted border-border hover:border-ink"}`}
+      >
+        {label}
+        <span className={`text-[9px] ${selected.size > 0 ? "text-white/70" : "text-muted3"}`}>▾</span>
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 mt-1 z-20 bg-white border border-border shadow-xl min-w-[200px] max-h-[300px] overflow-y-auto">
+            <div className="flex items-center justify-between px-3 py-2 border-b border-borderFaint">
+              <span className="font-mono text-[9.5px] tracking-[.09em] text-muted3">STATUS</span>
+              {selected.size > 0 && (
+                <button onClick={() => onChange(new Set())} className="text-[10.5px] text-key hover:text-accent">Clear</button>
+              )}
+            </div>
+            {statuses.map((s) => (
+              <button
+                key={s}
+                onClick={() => toggle(s)}
+                className="w-full flex items-center gap-[9px] px-3 py-[7px] hover:bg-cream text-left transition-colors"
+              >
+                <span className={`w-[14px] h-[14px] border flex items-center justify-center flex-none ${selected.has(s) ? "bg-ink border-ink" : "border-border"}`}>
+                  {selected.has(s) && <span className="text-white text-[9px]">✓</span>}
+                </span>
+                <span className="text-[12.5px] text-ink">{s}</span>
+              </button>
+            ))}
+            {statuses.length === 0 && <div className="px-3 py-2 text-[12px] text-muted3">No statuses</div>}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// Sort control: pick a field, toggle direction.
+function SortControl({
+  sortBy,
+  sortDir,
+  onSortBy,
+  onToggleDir,
+}: {
+  sortBy: string;
+  sortDir: "asc" | "desc";
+  onSortBy: (s: any) => void;
+  onToggleDir: () => void;
+}) {
+  const OPTIONS: { value: string; label: string }[] = [
+    { value: "priority", label: "Priority (manual)" },
+    { value: "summary", label: "Name" },
+    { value: "status", label: "Status" },
+    { value: "key", label: "Key" },
+    { value: "points", label: "Points" },
+  ];
+  return (
+    <div className="flex items-center border border-border bg-white h-[28px]">
+      <select
+        value={sortBy}
+        onChange={(e) => onSortBy(e.target.value)}
+        className="h-full px-2 text-[12px] bg-transparent outline-none cursor-pointer text-muted"
+        title="Sort by"
+      >
+        {OPTIONS.map((o) => (
+          <option key={o.value} value={o.value}>Sort: {o.label}</option>
+        ))}
+      </select>
+      <button
+        onClick={onToggleDir}
+        className="h-full px-2 border-l border-border text-[11px] text-muted2 hover:text-ink hover:bg-cream transition-colors"
+        title={sortDir === "asc" ? "Ascending" : "Descending"}
+      >
+        {sortDir === "asc" ? "↑" : "↓"}
+      </button>
     </div>
   );
 }

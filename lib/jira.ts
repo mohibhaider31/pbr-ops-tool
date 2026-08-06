@@ -311,3 +311,26 @@ export async function fetchMyJiraStories(accountId: string, auth?: JiraAuth, opt
   } while (nextPageToken);
   return issues.map(mapIssue);
 }
+
+// Fetch ALL stories in the project regardless of status (full backlog view).
+// Used by the backlog board's "all statuses" mode with client-side filtering.
+export async function fetchAllStories(opts?: JiraProjectOpts): Promise<JiraIssue[]> {
+  const projectKey = opts?.projectKey || DEFAULT_PROJECT;
+  const jql = `project = ${projectKey} AND issuetype = Story ORDER BY created ASC`;
+  const issues: any[] = [];
+  let nextPageToken: string | undefined;
+  do {
+    const data = await jiraFetch(`/rest/api/3/search/jql`, {
+      method: "POST",
+      body: JSON.stringify({
+        jql,
+        maxResults: 100,
+        fields: BACKLOG_FIELDS,
+        ...(nextPageToken ? { nextPageToken } : {}),
+      }),
+    });
+    issues.push(...(data.issues || []));
+    nextPageToken = data.isLast ? undefined : data.nextPageToken;
+  } while (nextPageToken);
+  return issues.map(mapIssue);
+}

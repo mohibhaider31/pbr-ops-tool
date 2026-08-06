@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
-import { fetchBacklog } from "@/lib/jira";
+import { fetchAllStories } from "@/lib/jira";
 import { prisma } from "@/lib/prisma";
 import { getCurrentBoard } from "@/lib/board";
 
@@ -9,7 +9,7 @@ export async function GET() {
     const board = await getCurrentBoard();
     if (!board) return NextResponse.json({ error: "no board" }, { status: 400 });
 
-    const issues = await fetchBacklog({ projectKey: board.jiraProjectKey, backlogStatus: board.backlogStatus });
+    const issues = await fetchAllStories({ projectKey: board.jiraProjectKey });
 
     // Ensure every backlog issue has a Story row scoped to THIS board.
     const existing = await prisma.story.findMany({
@@ -40,7 +40,10 @@ export async function GET() {
       .filter((s) => issueByKey.has(s.jiraKey))
       .map((s) => ({ ...s, jira: issueByKey.get(s.jiraKey) }));
 
-    return NextResponse.json({ stories: merged });
+    // Distinct statuses present, for the filter UI (in a stable order).
+    const statuses = Array.from(new Set(issues.map((i) => i.status))).sort();
+
+    return NextResponse.json({ stories: merged, statuses });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
