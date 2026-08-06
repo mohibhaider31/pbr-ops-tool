@@ -158,7 +158,45 @@ export default function BacklogBoard() {
 
   if (!stories) {
     return (
-      <div className="p-8 text-sm text-muted2 font-mono">Loading backlog…</div>
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <header className="flex items-end justify-between gap-6 px-[30px] pt-6 pb-4 border-b border-border">
+          <div className="flex flex-col gap-[7px]">
+            <h1 className="m-0 text-[25px] font-semibold tracking-[-0.025em]">Backlog Review</h1>
+            <p className="m-0 text-[12.5px] text-muted">Browse, filter, and triage all stories. Prioritize and clear for PBR.</p>
+          </div>
+        </header>
+        {/* Stat cards skeleton */}
+        <div className="grid grid-cols-4 gap-px bg-border border-b border-border">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="bg-paper px-[30px] pt-[14px] pb-[15px] flex flex-col gap-[7px]">
+              <div className="h-[9px] w-[70px] bg-borderLight animate-pulse" />
+              <div className="h-[20px] w-[40px] bg-borderLight animate-pulse" />
+            </div>
+          ))}
+        </div>
+        {/* Row skeletons */}
+        <div className="flex-1 overflow-hidden">
+          <div className="px-[30px] py-3 border-b border-borderLight flex items-center gap-3">
+            <div className="h-[9px] w-[300px] bg-borderLight animate-pulse" />
+          </div>
+          {Array.from({ length: 12 }).map((_, i) => (
+            <div
+              key={i}
+              className="grid gap-0 px-[30px] items-center h-[46px] border-b border-borderLight"
+              style={{ gridTemplateColumns: "46px 64px minmax(160px,1fr) 34px 112px 34px 130px" }}
+            >
+              <div className="h-[11px] w-[16px] bg-borderLight animate-pulse" />
+              <div className="h-[11px] w-[46px] bg-borderLight animate-pulse" />
+              <div className="h-[11px] bg-borderLight animate-pulse" style={{ width: `${45 + ((i * 7) % 40)}%` }} />
+              <div className="h-[11px] w-[16px] bg-borderLight animate-pulse" />
+              <div />
+              <div />
+              <div className="h-[11px] w-[70px] bg-borderLight animate-pulse ml-auto" />
+            </div>
+          ))}
+          <div className="px-[30px] py-4 text-[11.5px] text-muted3 font-mono">Loading all stories from Jira…</div>
+        </div>
+      </div>
     );
   }
 

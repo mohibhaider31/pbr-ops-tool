@@ -322,7 +322,7 @@ export async function fetchMyJiraStories(accountId: string, auth?: JiraAuth, opt
 // short-lived so this self-expires; it's a best-effort speedup, not a
 // correctness dependency.
 const _storyCache = new Map<string, { at: number; data: JiraIssue[] }>();
-const STORY_CACHE_MS = 30_000;
+const STORY_CACHE_MS = 5 * 60_000; // 5 minutes — the full-project scan is slow, so cache aggressively
 
 export async function fetchAllStories(opts?: JiraProjectOpts): Promise<JiraIssue[]> {
   const projectKey = opts?.projectKey || DEFAULT_PROJECT;
