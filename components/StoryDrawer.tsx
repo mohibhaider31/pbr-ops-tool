@@ -129,9 +129,10 @@ export default function StoryDrawer({
 
             {addOpen && (
               <PeoplePicker
+                multi
                 excludeEmails={story.assignees.map((a) => a.email)}
-                placeholder="Search people to add as reviewer…"
-                onPick={async (person) => {
+                placeholder="Search people to add as reviewers…"
+                onPickMany={async (people) => {
                   setBusy(true);
                   await fetch(`/api/stories/${story.jiraKey}/assign`, {
                     method: "POST",
@@ -139,7 +140,7 @@ export default function StoryDrawer({
                     body: JSON.stringify({
                       assignees: [
                         ...story.assignees.map((a) => ({ name: a.name, email: a.email })),
-                        person,
+                        ...people,
                       ],
                     }),
                   });
