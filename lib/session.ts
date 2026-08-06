@@ -5,6 +5,7 @@
 
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
+import { refreshTokens } from "@/lib/atlassian-oauth";
 
 const COOKIE_NAME = "pbr_session";
 
@@ -44,6 +45,37 @@ export async function getSession(): Promise<Session | null> {
   if (!id) return null;
   const row = await prisma.authSession.findUnique({ where: { id } });
   if (!row) return null;
+
+  // Atlassian access tokens expire (~1h). If this one is expired or within a
+  // 2-minute buffer, use the refresh token to get a fresh one and persist it.
+  // Without this, long-lived sessions (e.g. an hours-long poker session) fail
+  // Jira writes with 401 once the original token lapses.
+  const BUFFER_MS = 2 * 60 * 1000;
+  let accessToken = row.accessToken;
+  let refreshToken = row.refreshToken;
+  let accessExpiresAt = row.accessExpiresAt.getTime();
+
+  if (Date.now() + BUFFER_MS >= accessExpiresAt) {
+    try {
+      const refreshed = await refreshTokens(row.refreshToken);
+      accessToken = refreshed.accessToken;
+      refreshToken = refreshed.refreshToken;
+      accessExpiresAt = Date.now() + refreshed.expiresIn * 1000;
+      await prisma.authSession.update({
+        where: { id },
+        data: {
+          accessToken,
+          refreshToken,
+          accessExpiresAt: new Date(accessExpiresAt),
+        },
+      });
+    } catch {
+      // Refresh failed (e.g. refresh token revoked/expired after ~90 days of
+      // inactivity). Return the stale session; the caller's Jira request will
+      // surface a clear error and the user can re-authenticate by logging in.
+    }
+  }
+
   return {
     id: row.id,
     accountId: row.accountId,
@@ -51,9 +83,9 @@ export async function getSession(): Promise<Session | null> {
     email: row.email,
     avatarUrl: row.avatarUrl,
     cloudId: row.cloudId,
-    accessToken: row.accessToken,
-    refreshToken: row.refreshToken,
-    accessExpiresAt: row.accessExpiresAt.getTime(),
+    accessToken,
+    refreshToken,
+    accessExpiresAt,
   };
 }
 
