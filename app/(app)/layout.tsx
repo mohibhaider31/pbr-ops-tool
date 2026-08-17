@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
+import { SyncProvider } from "@/components/SyncProvider";
 import { getSession } from "@/lib/session";
 
 // Authenticated app shell. Validates the session server-side: a missing OR
@@ -10,9 +11,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!session) redirect("/login");
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-paper text-ink font-sans">
-      <Sidebar />
-      <main className="flex-1 min-w-0 flex flex-col overflow-hidden">{children}</main>
-    </div>
+    <SyncProvider>
+      <div className="flex h-screen w-full overflow-hidden bg-paper text-ink font-sans">
+        <Sidebar />
+        <main className="flex-1 min-w-0 flex flex-col overflow-hidden">{children}</main>
+      </div>
+    </SyncProvider>
   );
 }

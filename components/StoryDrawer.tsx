@@ -7,6 +7,7 @@ import { avatarColor, initials } from "@/lib/avatar";
 import Runner from "./Runner";
 import PeoplePicker from "./PeoplePicker";
 import { useViewer } from "@/lib/useViewer";
+import { useSync } from "./SyncProvider";
 
 export default function StoryDrawer({
   story,
@@ -20,6 +21,7 @@ export default function StoryDrawer({
   onToast: (msg: string) => void;
 }) {
   const { can } = useViewer();
+  const { run } = useSync();
   const [addOpen, setAddOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [mirror, setMirror] = useState(true);
@@ -54,28 +56,33 @@ export default function StoryDrawer({
     onChanged();
   };
 
-  const toggleMyReview = async () => {
-    setBusy(true);
-    await fetch(`/api/stories/${story.jiraKey}/assign`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: myEmail }),
+  const toggleMyReview = () => {
+    // Optimistic: fire in the background, refresh on success.
+    run("review", async () => {
+      const res = await fetch(`/api/stories/${story.jiraKey}/assign`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: myEmail }),
+      });
+      if (!res.ok) throw new Error("review sync failed");
+      onChanged();
     });
-    setBusy(false);
-    onChanged();
   };
 
-  const submitComment = async (isQuestion: boolean) => {
-    if (!draft.trim()) return;
-    setBusy(true);
-    await fetch(`/api/stories/${story.jiraKey}/comment`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ author: "You", text: draft, isQuestion, syncToJira: mirror }),
-    });
+  const submitComment = (isQuestion: boolean) => {
+    const text = draft.trim();
+    if (!text) return;
+    // Clear the input immediately so it feels instant; sync in the background.
     setDraft("");
-    setBusy(false);
-    onChanged();
+    run(isQuestion ? "question" : "comment", async () => {
+      const res = await fetch(`/api/stories/${story.jiraKey}/comment`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ author: "You", text, isQuestion, syncToJira: mirror }),
+      });
+      if (!res.ok) throw new Error("comment sync failed");
+      onChanged();
+    });
   };
 
   return (

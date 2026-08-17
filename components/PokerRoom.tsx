@@ -6,6 +6,7 @@ import { avatarColor, initials } from "@/lib/avatar";
 import { DECK } from "@/lib/poker";
 import { usePokerChannel } from "@/lib/usePusher";
 import Toast from "./Toast";
+import { useSync } from "./SyncProvider";
 import PokerAddStories from "./PokerAddStories";
 
 type Participant = { voterId: string; voterName: string; voted: boolean; card: string | null };
@@ -25,6 +26,7 @@ type State = { code: string; organizerName: string; isOrganizer: boolean; queue:
 
 export default function PokerRoom({ code }: { code: string }) {
   const router = useRouter();
+  const { run } = useSync();
   const [s, setS] = useState<State | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -86,13 +88,37 @@ export default function PokerRoom({ code }: { code: string }) {
   };
   const act = async (path: string, body?: any) => {
     if (!cur) return;
+
+    // "accept" writes story points to Jira (slow). Make it optimistic: mark
+    // the item done in the UI immediately and sync in the background with a
+    // visible status. reveal/revote are DB-only and fast, so keep them inline.
+    if (path === "accept") {
+      const itemId = cur.itemId;
+      const jiraKey = cur.jiraKey;
+      const points = body?.points;
+      // Optimistically reflect acceptance in the queue + advance.
+      setS((p) => {
+        if (!p) return p;
+        const queue = p.queue.map((q: any) => (q.itemId === itemId ? { ...q, status: "DONE", finalPoints: points } : q));
+        return { ...p, queue, current: p.current ? { ...p.current, finalPoints: points } : p.current };
+      });
+      run(`${points} pts → ${jiraKey}`, async () => {
+        const res = await fetch(`/api/poker/${code}/item/${itemId}/accept`, {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ points }),
+        });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || d.error) throw new Error(d.error || "accept failed");
+        load();
+      });
+      return;
+    }
+
     setBusy(true);
     const res = await fetch(`/api/poker/${code}/item/${cur.itemId}/${path}`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined,
     });
     const d = await res.json(); setBusy(false);
     if (d.error) showToast(d.error);
-    else if (path === "accept") showToast(`${body.points} pts synced to ${cur.jiraKey}`);
     load();
   };
   const goTo = async (itemId: string) => {

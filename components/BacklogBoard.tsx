@@ -6,12 +6,14 @@ import { STAGE_META } from "@/lib/stage";
 import { avatarColor, initials } from "@/lib/avatar";
 import StoryDrawer from "./StoryDrawer";
 import Toast from "./Toast";
+import { useSync } from "./SyncProvider";
 import { useViewer } from "@/lib/useViewer";
 
 type Filter = "all" | "unassigned" | "assigned" | "in_review" | "questions" | "done";
 
 export default function BacklogBoard() {
   const { can } = useViewer();
+  const { run } = useSync();
   const [stories, setStories] = useState<Story[] | null>(null);
   const [statuses, setStatuses] = useState<string[]>([]);
   const [statusFilter, setStatusFilter] = useState<Set<string>>(new Set());
@@ -124,7 +126,7 @@ export default function BacklogBoard() {
     ];
   }, [stories]);
 
-  const reorder = async (fromKey: string, toKey: string) => {
+  const reorder = (fromKey: string, toKey: string) => {
     if (!can("prioritize")) return;
     if (!stories || fromKey === toKey) return;
     const fromIdx = stories.findIndex((s) => s.jiraKey === fromKey);
@@ -134,14 +136,17 @@ export default function BacklogBoard() {
     const next = [...stories];
     const [moved] = next.splice(fromIdx, 1);
     next.splice(toIdx, 0, moved);
-    setStories(next);
+    setStories(next); // optimistic: order updates instantly, no reload flash
 
-    await fetch(`/api/stories/${fromKey}/priority`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ newOrder: toIdx }),
+    // Priority lives in our own DB, so no Jira wait and no full reload needed.
+    run("priority", async () => {
+      const res = await fetch(`/api/stories/${fromKey}/priority`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ newOrder: toIdx }),
+      });
+      if (!res.ok) throw new Error("priority sync failed");
     });
-    load();
   };
 
   const openStory = stories?.find((s) => s.jiraKey === openKey) || null;
