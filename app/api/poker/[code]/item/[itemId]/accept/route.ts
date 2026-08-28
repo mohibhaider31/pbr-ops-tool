@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
+import { waitUntil } from "@vercel/functions";
 import { prisma } from "@/lib/prisma";
 import { getViewer } from "@/lib/viewer";
 import { getSession } from "@/lib/session";
@@ -21,43 +22,38 @@ export async function POST(req: Request, { params }: { params: { code: string; i
   const item = await prisma.pokerItem.findUnique({ where: { id: params.itemId } });
   if (!item) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
-  // Compute the Alignment Spread Score from the votes on the round being
-  // accepted (item.round = current/final round). Reuses the same spread logic
-  // shown at reveal, so the number matches what the team just saw.
-  const votes = await prisma.pokerVote.findMany({
-    where: { itemId: item.id, round: item.round },
-  });
+  const votes = await prisma.pokerVote.findMany({ where: { itemId: item.id, round: item.round } });
   const analysis = analyze(votes.map((v) => ({ voterId: v.voterId, voterName: v.voterName, card: v.card })));
-  const alignmentScore = analysis.alignmentScore; // 1-5 or null
+  const alignmentScore = analysis.alignmentScore;
 
-  try {
-    const s = await getSession();
-    const auth = s ? { accessToken: s.accessToken, cloudId: s.cloudId } : undefined;
+  // Record in our (fast, co-located) DB and broadcast immediately, then open
+  // the refinement poll. All the Jira work happens in the background via
+  // waitUntil so the organizer's accept feels instant instead of waiting on
+  // Atlassian's API (was ~4.7s).
+  await prisma.pokerItem.update({
+    where: { id: item.id },
+    data: { finalPoints: points, alignmentScore: alignmentScore ?? undefined, status: "DONE", refinementPollOpen: true },
+  });
+  await pusher().trigger(pokerChannel(params.code), POKER_EVENTS.accepted, { itemId: item.id, points, alignmentScore });
+  await pusher().trigger(pokerChannel(params.code), POKER_EVENTS.refinementOpen, { itemId: item.id, jiraKey: item.jiraKey });
 
-    await setStoryPoints(item.jiraKey, points, auth);
-
-    // Push the alignment score to Jira as a comment alongside points (no custom
-    // field required). Best-effort — a comment failure shouldn't block accept.
-    if (alignmentScore != null) {
+  waitUntil(
+    (async () => {
       try {
-        await addJiraComment(
-          item.jiraKey,
-          viewer.name,
-          `Estimate accepted via Planning Poker: ${points} story points. Team alignment: ${alignmentScore}/5 (${analysis.spreadLabel}).`,
-          auth
-        );
-      } catch { /* non-fatal */ }
-    }
+        const s = await getSession();
+        const auth = s ? { accessToken: s.accessToken, cloudId: s.cloudId } : undefined;
+        await setStoryPoints(item.jiraKey, points, auth);
+        if (alignmentScore != null) {
+          await addJiraComment(
+            item.jiraKey,
+            viewer.name,
+            `Estimate accepted via Planning Poker: ${points} story points. Team alignment: ${alignmentScore}/5 (${analysis.spreadLabel}).`,
+            auth
+          );
+        }
+      } catch { /* non-fatal; score is safe in our DB, Jira sync can be retried */ }
+    })()
+  );
 
-    await prisma.pokerItem.update({
-      where: { id: item.id },
-      data: { finalPoints: points, alignmentScore: alignmentScore ?? undefined, status: "DONE", refinementPollOpen: true },
-    });
-    await pusher().trigger(pokerChannel(params.code), POKER_EVENTS.accepted, { itemId: item.id, points, alignmentScore });
-    // Kick off the post-accept "does this still need refinement?" poll.
-    await pusher().trigger(pokerChannel(params.code), POKER_EVENTS.refinementOpen, { itemId: item.id, jiraKey: item.jiraKey });
-    return NextResponse.json({ ok: true, points, alignmentScore });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
-  }
+  return NextResponse.json({ ok: true, points, alignmentScore });
 }

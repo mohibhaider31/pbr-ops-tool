@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
+import { waitUntil } from "@vercel/functions";
 import { prisma } from "@/lib/prisma";
 import { getViewer } from "@/lib/viewer";
 import { getSession } from "@/lib/session";
@@ -34,18 +35,25 @@ export async function POST(_req: Request, { params }: { params: { code: string; 
     data: { investPollOpen: false, investScore },
   });
 
-  // Best-effort Jira comment with the INVEST result.
-  try {
-    const s = await getSession();
-    const auth = s ? { accessToken: s.accessToken, cloudId: s.cloudId } : undefined;
-    await addJiraComment(
-      item.jiraKey,
-      viewer.name,
-      `INVEST score (team average): ${investScore}/6, from ${n} scorer${n === 1 ? "" : "s"} in Planning Poker.`,
-      auth
-    );
-  } catch { /* non-fatal */ }
-
+  // Broadcast the closed state and respond immediately. The Jira comment runs
+  // in the background via waitUntil — reliably completes after the response is
+  // sent, so the user never waits on Atlassian's slow API (was ~2.5s).
   await pusher().trigger(pokerChannel(params.code), POKER_EVENTS.investClosed, { itemId: item.id, investScore, scorers: n });
+
+  waitUntil(
+    (async () => {
+      try {
+        const s = await getSession();
+        const auth = s ? { accessToken: s.accessToken, cloudId: s.cloudId } : undefined;
+        await addJiraComment(
+          item.jiraKey,
+          viewer.name,
+          `INVEST score (team average): ${investScore}/6, from ${n} scorer${n === 1 ? "" : "s"} in Planning Poker.`,
+          auth
+        );
+      } catch { /* non-fatal */ }
+    })()
+  );
+
   return NextResponse.json({ ok: true, investScore, scorers: n });
 }
