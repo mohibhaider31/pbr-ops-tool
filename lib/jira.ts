@@ -84,7 +84,10 @@ function mapIssue(raw: any): JiraIssue {
 
 // Configurable so this doesn't need a code change per Jira workflow.
 const BACKLOG_STATUS = process.env.JIRA_BACKLOG_STATUS || "Backlog";
-const BACKLOG_FIELDS = ["summary", "status", "issuetype", "labels", "assignee", "customfield_10016"];
+// NOTE: must match the field mapIssue() reads. These were previously out of
+// sync - we requested customfield_10016 but read customfield_10024, so story
+// points were silently null in every list view.
+const BACKLOG_FIELDS = ["summary", "status", "issuetype", "labels", "assignee", "customfield_10024"];
 
 /**
  * Pull the current backlog for the configured project.

@@ -20,6 +20,19 @@ export async function POST(
     if (!board) return NextResponse.json({ error: "no board" }, { status: 400 });
     const READY_FOR_DEV = board.readyForDevStatus.toLowerCase();
 
+    // Only allow transitions to statuses this board actually declares as part
+    // of its PBR path (plus the Ready-For-Dev target). Previously any status
+    // string from the client was attempted against Jira.
+    const allowed = new Set(
+      [...board.pbrDonePath, board.readyForDevStatus].map((s) => s.toLowerCase())
+    );
+    if (!allowed.has(to.toLowerCase())) {
+      return NextResponse.json(
+        { error: `"${to}" is not a configured PBR status for this board` },
+        { status: 400 }
+      );
+    }
+
     const isFinalHop = to.toLowerCase() === READY_FOR_DEV;
     const needed = isFinalHop ? "pbr_approve" : "pbr_send";
     if (!can({ role: board.role ?? "VIEWER", isAdmin: board.isAdmin }, needed)) {

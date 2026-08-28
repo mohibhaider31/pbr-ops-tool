@@ -20,7 +20,7 @@ export default function StoryDrawer({
   onChanged: () => void;
   onToast: (msg: string) => void;
 }) {
-  const { can } = useViewer();
+  const { can, viewer } = useViewer();
   const { run } = useSync();
   const [addOpen, setAddOpen] = useState(false);
   const [draft, setDraft] = useState("");
@@ -38,9 +38,11 @@ export default function StoryDrawer({
   const meta = STAGE_META[story.stage];
   const doneCount = story.assignees.filter((a) => a.markedDone).length;
   const allReviewed = story.assignees.length > 0 && doneCount === story.assignees.length;
-  // "You" stands in for a real logged-in identity until auth is wired up.
-  const myEmail = "you@local";
-  const myAssignment = story.assignees.find((a) => a.email === myEmail);
+  // The real signed-in identity. This was previously hardcoded to "you@local",
+  // a prototype placeholder that could never match a real assignee - so the
+  // "mark my review done" control silently did nothing.
+  const myEmail = viewer?.email ?? null;
+  const myAssignment = myEmail ? story.assignees.find((a) => a.email === myEmail) : undefined;
 
   const removeAssignee = async (email: string) => {
     setBusy(true);
@@ -57,6 +59,7 @@ export default function StoryDrawer({
   };
 
   const toggleMyReview = () => {
+    if (!myEmail) return; // no identity resolved yet
     // Optimistic: fire in the background, refresh on success.
     run("review", async () => {
       const res = await fetch(`/api/stories/${story.jiraKey}/assign`, {

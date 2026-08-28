@@ -36,7 +36,11 @@ export function middleware(req: NextRequest) {
   // The routes themselves enforce that a guest can only read/vote (never run
   // organizer actions), so this just lets the request through to that logic.
   if (!hasSession && hasGuest && pathname.startsWith("/api/poker/")) {
-    const isVote = /^\/api\/poker\/[^/]+\/item\/[^/]+\/vote$/.test(pathname);
+    // Guests may cast ANY of the three participant votes: estimation, the
+    // post-accept refinement poll, and INVEST scoring. The previous regex
+    // matched only "/vote", so guests were 401'd out of refinement-vote and
+    // invest-vote despite the feature being built for equal participation.
+    const isVote = /^\/api\/poker\/[^/]+\/item\/[^/]+\/(vote|refinement-vote|invest-vote)$/.test(pathname);
     const isRead = /^\/api\/poker\/[^/]+$/.test(pathname);
     if (isVote || isRead) return NextResponse.next();
   }
