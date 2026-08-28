@@ -264,9 +264,16 @@ export async function setStoryPoints(key: string, points: number, auth?: JiraAut
 }
 
 // --- Poker: fetch Ready-For-Dev stories to estimate ---
+const _readyCache = new Map<string, { at: number; data: JiraIssue[] }>();
+const READY_CACHE_MS = 60_000; // 1 min — enough to make repeat opens of the add-stories modal instant
+
 export async function fetchReadyForDevStories(auth?: JiraAuth, opts?: JiraProjectOpts): Promise<JiraIssue[]> {
   const projectKey = opts?.projectKey || DEFAULT_PROJECT;
   const status = opts?.readyForDevStatus || process.env.JIRA_READY_FOR_DEV_STATUS || "Ready For Dev";
+  const cacheKey = `${projectKey}::${status}`;
+  const cached = _readyCache.get(cacheKey);
+  if (cached && Date.now() - cached.at < READY_CACHE_MS) return cached.data;
+
   const jql = `project = ${projectKey} AND issuetype = Story AND status = "${status}" ORDER BY updated DESC`;
   const issues: any[] = [];
   let nextPageToken: string | undefined;
@@ -285,7 +292,9 @@ export async function fetchReadyForDevStories(auth?: JiraAuth, opts?: JiraProjec
     issues.push(...(data.issues || []));
     nextPageToken = data.isLast ? undefined : data.nextPageToken;
   } while (nextPageToken);
-  return issues.map(mapIssue);
+  const mapped = issues.map(mapIssue);
+  _readyCache.set(cacheKey, { at: Date.now(), data: mapped });
+  return mapped;
 }
 
 // --- My Work: stories assigned to a user in Jira (native assignee) ---
