@@ -13,7 +13,7 @@ type Participant = { voterId: string; voterName: string; voted: boolean; card: s
 type Analysis = {
   spreadLabel: string; median: number | null; suggested: number | null;
   verdict: string; safeToAccept: boolean; average: number | null;
-  mode: string | null; confidence: number | null;
+  mode: string | null; confidence: number | null; alignmentScore: number | null;
   distribution: { card: string; count: number }[];
 };
 type Current = {
@@ -342,6 +342,7 @@ export default function PokerRoom({ code }: { code: string }) {
                     <Row label="Average" value={cur.analysis.average != null ? cur.analysis.average.toFixed(2) : "–"} />
                     <Row label="Median" value={cur.analysis.median != null ? String(cur.analysis.median) : "–"} />
                     <Row label="Confidence" value={cur.analysis.confidence != null ? `${cur.analysis.confidence}%` : "–"} />
+                    <Row label="Alignment" value={cur.analysis.alignmentScore != null ? `${cur.analysis.alignmentScore}/5` : "–"} />
                   </div>
                   <div className="flex flex-col gap-[5px]">
                     {cur.analysis.distribution.map((d) => (

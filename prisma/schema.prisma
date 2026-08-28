@@ -230,6 +230,7 @@ model PokerItem {
   state       PokerState      @default(VOTING) // voting/revealed for THIS story
   round       Int             @default(1)
   finalPoints Int?
+  alignmentScore Int? // 1-5 team alignment at accept time
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
 

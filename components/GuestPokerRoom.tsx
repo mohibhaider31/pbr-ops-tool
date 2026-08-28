@@ -9,7 +9,7 @@ type Participant = { voterId: string; voterName: string; voted: boolean; card: s
 type Analysis = {
   median: number | null; suggested: number | null; average: number | null;
   verdict: string; safeToAccept: boolean; mode: string | null; confidence: number | null;
-  distribution: { card: string; count: number }[];
+  distribution: { card: string; count: number }[]; alignmentScore: number | null;
 };
 
 // Guest voting view — now shows the same shared picture the team sees: the
@@ -166,6 +166,7 @@ export default function GuestPokerRoom({ code, name }: { code: string; name: str
                   <Row label="Average" value={a.average != null ? a.average.toFixed(2) : "–"} />
                   <Row label="Median" value={a.median != null ? String(a.median) : "–"} />
                   <Row label="Confidence" value={a.confidence != null ? `${a.confidence}%` : "–"} />
+                  <Row label="Alignment" value={a.alignmentScore != null ? `${a.alignmentScore}/5` : "–"} />
                 </div>
                 <div className="flex flex-col gap-1">
                   {a.distribution.map((d) => (

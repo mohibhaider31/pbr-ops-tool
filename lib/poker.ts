@@ -15,6 +15,7 @@ export type RevealAnalysis = {
   mode: string | null; // most-voted card (the "Most Votes" value)
   confidence: number | null; // % of ALL votes matching the mode (0-100)
   distribution: { card: string; count: number }[]; // sorted desc by count
+  alignmentScore: number | null; // 1-5 team alignment; null when no numeric votes
 };
 
 const NUMERIC_DECK = [1, 2, 3, 5, 8, 13, 21];
@@ -63,6 +64,7 @@ export function analyze(votes: Vote[]): RevealAnalysis {
       mode,
       confidence,
       distribution,
+      alignmentScore: null,
     };
   }
 
@@ -97,7 +99,20 @@ export function analyze(votes: Vote[]): RevealAnalysis {
 
   const spreadLabel = min === max ? `All ${min}` : `${min} – ${max}${hasUnknowns ? " (+?)" : ""}`;
 
-  return { numeric, spreadLabel, median, suggested, verdict, safeToAccept: safe, average, mode, confidence, distribution };
+  // Alignment Spread Score (1–5): tighter clustering = higher alignment.
+  // Measured in deck steps (how the team actually reasons about estimate gaps),
+  // with a penalty when some voters said "?" (they didn't understand it).
+  // 5 = full consensus, 1 = wide disagreement.
+  let alignmentScore: number;
+  if (min === max && !hasUnknowns) alignmentScore = 5;      // everyone identical
+  else if (spreadSteps <= 1) alignmentScore = 4;            // adjacent deck values
+  else if (spreadSteps === 2) alignmentScore = 3;           // two steps
+  else if (spreadSteps === 3) alignmentScore = 2;           // three steps
+  else alignmentScore = 1;                                  // four+ steps apart
+  // A "?" in the mix caps alignment: unresolved understanding, never a perfect 5.
+  if (hasUnknowns && alignmentScore === 5) alignmentScore = 4;
+
+  return { numeric, spreadLabel, median, suggested, verdict, safeToAccept: safe, average, mode, confidence, distribution, alignmentScore };
 }
 
 // Short, human-friendly invite code.
