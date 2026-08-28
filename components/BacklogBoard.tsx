@@ -23,6 +23,7 @@ export default function BacklogBoard() {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [openKey, setOpenKey] = useState<string | null>(null);
+  const [openStory, setOpenStory] = useState<any | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [dragKey, setDragKey] = useState<string | null>(null);
 
@@ -154,12 +155,35 @@ export default function BacklogBoard() {
   // scan) after every comment, assign, or review toggle.
   const applyStoryUpdate = useCallback((updated?: any) => {
     if (!updated?.jiraKey) { load(); return; } // fall back if the route didn't return one
+    setOpenStory((cur: any) => (cur && cur.jiraKey === updated.jiraKey ? { ...cur, ...updated } : cur));
     setStories((prev) =>
-      prev?.map((s) => (s.jiraKey === updated.jiraKey ? { ...s, ...updated, jira: s.jira } : s)) || prev
+      prev?.map((s) =>
+        s.jiraKey === updated.jiraKey
+          ? {
+              ...s,
+              assignees: updated.assignees ?? s.assignees,
+              stage: updated.stage ?? s.stage,
+              questionCount: Array.isArray(updated.comments)
+                ? updated.comments.filter((c: any) => c.isQuestion).length
+                : (s as any).questionCount,
+              jira: s.jira,
+            }
+          : s
+      ) || prev
     );
   }, [load]);
 
-  const openStory = stories?.find((s) => s.jiraKey === openKey) || null;
+  // The list is a projection (no comment bodies), so the drawer fetches the
+  // full story on open instead of reading it out of the list.
+  useEffect(() => {
+    if (!openKey) { setOpenStory(null); return; }
+    let alive = true;
+    fetch(`/api/stories/${openKey}`)
+      .then((r) => r.json())
+      .then((d) => { if (alive && d?.story) setOpenStory(d.story); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [openKey]);
 
   if (error) {
     return (
@@ -302,7 +326,7 @@ export default function BacklogBoard() {
         {filtered.map((story, idx) => {
           const meta = STAGE_META[story.stage];
           const doneCount = story.assignees.filter((a) => a.markedDone).length;
-          const qCount = story.comments.filter((c) => c.isQuestion).length;
+          const qCount = (story as any).questionCount ?? 0;
           const canDrag = can("prioritize") && sortBy === "priority" && !query.trim() && statusFilter.size === 0 && filter === "all";
 
           return (

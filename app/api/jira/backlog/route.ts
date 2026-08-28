@@ -29,16 +29,43 @@ export async function GET() {
       );
     }
 
+    // Projection, not the full object graph. The table renders assignee
+    // avatars/counts and a question COUNT - it never renders comment bodies.
+    // Previously every comment on every story was serialised and shipped.
     const stories = await prisma.story.findMany({
       where: { boardId: board.id, jiraKey: { in: issues.map((i) => i.key) } },
-      include: { assignees: true, comments: { orderBy: { createdAt: "asc" } } },
+      select: {
+        id: true,
+        jiraKey: true,
+        priorityOrder: true,
+        stage: true,
+        assignees: { select: { id: true, name: true, email: true, accountId: true, markedDone: true } },
+        _count: { select: { comments: true } },
+      },
       orderBy: { priorityOrder: "asc" },
     });
+
+    // Question counts in one grouped query rather than shipping every comment.
+    const questionCounts = await prisma.comment.groupBy({
+      by: ["storyId"],
+      where: { isQuestion: true, story: { boardId: board.id } },
+      _count: { _all: true },
+    });
+    const qByStory = new Map(questionCounts.map((q) => [q.storyId, q._count._all]));
 
     const issueByKey = new Map(issues.map((i) => [i.key, i]));
     const merged = stories
       .filter((s) => issueByKey.has(s.jiraKey))
-      .map((s) => ({ ...s, jira: issueByKey.get(s.jiraKey) }));
+      .map((s) => ({
+        id: s.id,
+        jiraKey: s.jiraKey,
+        priorityOrder: s.priorityOrder,
+        stage: s.stage,
+        assignees: s.assignees,
+        commentCount: s._count.comments,
+        questionCount: qByStory.get(s.id) ?? 0,
+        jira: issueByKey.get(s.jiraKey),
+      }));
 
     // Distinct statuses present, for the filter UI (in a stable order).
     const statuses = Array.from(new Set(issues.map((i) => i.status))).sort();

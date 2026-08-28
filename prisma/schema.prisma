@@ -35,7 +35,7 @@ model Story {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([priorityOrder])
+  @@index([boardId, priorityOrder]) // backlog list: scoped + ordered in one index
   @@index([boardId])
 }
 
@@ -65,6 +65,12 @@ model Comment {
   text      String
   isQuestion Boolean @default(false)
   createdAt DateTime @default(now())
+
+  // Had NO indexes despite being queried by storyId (drawer + question
+  // counts) and by isQuestion+author (My Work "my open questions").
+  @@index([storyId, createdAt])
+  @@index([storyId, isQuestion])
+  @@index([author, isQuestion])
 }
 
 // --- Pipeline tracker (Engine -> Middleware -> Frontend) ---
