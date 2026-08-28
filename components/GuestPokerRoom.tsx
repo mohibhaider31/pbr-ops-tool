@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { usePokerChannel } from "@/lib/usePusher";
 import { DECK } from "@/lib/poker";
 import { avatarColor, initials } from "@/lib/avatar";
+import RefinementPoll from "./RefinementPoll";
 
 type Participant = { voterId: string; voterName: string; voted: boolean; card: string | null };
 type Analysis = {
@@ -45,6 +46,7 @@ export default function GuestPokerRoom({ code, name }: { code: string; name: str
   usePokerChannel(code, {
     "vote-update": () => debouncedLoad(), "revealed": () => debouncedLoad(), "re-vote": () => debouncedLoad(),
     "accepted": () => debouncedLoad(), "queue-update": () => debouncedLoad(), "navigate": () => debouncedLoad(),
+    "refinement-open": () => debouncedLoad(), "refinement-update": () => debouncedLoad(), "refinement-closed": () => debouncedLoad(),
   });
 
   const cur = state?.current;
@@ -65,6 +67,14 @@ export default function GuestPokerRoom({ code, name }: { code: string; name: str
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ card }),
+    }).catch(() => {});
+  };
+
+  const refinementVote = (needsWork: boolean) => {
+    if (!cur) return;
+    setState((p: any) => (p && p.current ? { ...p, current: { ...p.current, refinement: { ...p.current.refinement, myVote: needsWork } } } : p));
+    fetch(`/api/poker/${code}/item/${cur.itemId}/refinement-vote`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ needsWork }),
     }).catch(() => {});
   };
 
@@ -209,6 +219,15 @@ export default function GuestPokerRoom({ code, name }: { code: string; name: str
             </span>
           </div>
         </>
+      )}
+      {cur && cur.refinement && cur.refinement.open && (
+        <RefinementPoll
+          refinement={cur.refinement}
+          jiraKey={cur.jiraKey}
+          isOrganizer={false}
+          onVote={refinementVote}
+          onClose={() => {}}
+        />
       )}
     </div>
   );

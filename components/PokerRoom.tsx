@@ -7,6 +7,7 @@ import { DECK } from "@/lib/poker";
 import { usePokerChannel } from "@/lib/usePusher";
 import Toast from "./Toast";
 import { useSync } from "./SyncProvider";
+import RefinementPoll from "./RefinementPoll";
 import PokerAddStories from "./PokerAddStories";
 
 type Participant = { voterId: string; voterName: string; voted: boolean; card: string | null };
@@ -16,10 +17,12 @@ type Analysis = {
   mode: string | null; confidence: number | null; alignmentScore: number | null;
   distribution: { card: string; count: number }[];
 };
+type Refinement = { open: boolean; myVote: boolean | null; voted: number; yes: number; score: number | null };
 type Current = {
   itemId: string; jiraKey: string; summary: string;
   state: "VOTING" | "REVEALED"; round: number; finalPoints: number | null;
   myVote: string | null; participants: Participant[]; analysis: Analysis | null;
+  refinement: Refinement;
 };
 type QueueItem = { itemId: string; jiraKey: string; summary: string; status: "PENDING" | "DONE"; finalPoints: number | null; isCurrent: boolean };
 type State = { code: string; organizerName: string; isOrganizer: boolean; queue: QueueItem[]; current: Current | null };
@@ -69,6 +72,9 @@ export default function PokerRoom({ code }: { code: string }) {
     "accepted": () => debouncedLoad(),
     "queue-update": () => debouncedLoad(),
     "navigate": () => debouncedLoad(),
+    "refinement-open": () => debouncedLoad(),
+    "refinement-update": () => debouncedLoad(),
+    "refinement-closed": () => debouncedLoad(),
   });
 
   const showToast = (m: string) => { setToast(m); setTimeout(() => setToast(null), 2600); };
@@ -127,6 +133,19 @@ export default function PokerRoom({ code }: { code: string }) {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ itemId }),
     });
     setBusy(false); load();
+  };
+
+  const refinementVote = (needsWork: boolean) => {
+    if (!cur) return;
+    setS((p) => (p && p.current ? { ...p, current: { ...p.current, refinement: { ...p.current.refinement, myVote: needsWork } } } : p));
+    fetch(`/api/poker/${code}/item/${cur.itemId}/refinement-vote`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ needsWork }),
+    }).catch(() => {});
+  };
+  const refinementClose = async () => {
+    if (!cur) return;
+    await fetch(`/api/poker/${code}/item/${cur.itemId}/refinement-close`, { method: "POST" });
+    load();
   };
 
   const endSession = async () => {
@@ -402,6 +421,15 @@ export default function PokerRoom({ code }: { code: string }) {
           existingKeys={s.queue.map((q) => q.jiraKey)}
           onClose={() => setAddOpen(false)}
           onAdded={(n) => { setAddOpen(false); showToast(`Added ${n} ${n === 1 ? "story" : "stories"}`); load(); }}
+        />
+      )}
+      {cur && cur.refinement && cur.refinement.open && (
+        <RefinementPoll
+          refinement={cur.refinement}
+          jiraKey={cur.jiraKey}
+          isOrganizer={s.isOrganizer}
+          onVote={refinementVote}
+          onClose={refinementClose}
         />
       )}
       {toast && <Toast message={toast} />}

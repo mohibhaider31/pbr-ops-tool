@@ -10,7 +10,7 @@ export async function GET(_req: Request, { params }: { params: { code: string } 
 
   const session = await prisma.pokerSession.findUnique({
     where: { code: params.code },
-    include: { items: { orderBy: { order: "asc" }, include: { votes: true } } },
+    include: { items: { orderBy: { order: "asc" }, include: { votes: true, refinementVotes: true } } },
   });
   if (!session) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
@@ -31,6 +31,15 @@ export async function GET(_req: Request, { params }: { params: { code: string } 
     const analysis = revealed
       ? analyze(roundVotes.map((v) => ({ voterId: v.voterId, voterName: v.voterName, card: v.card })))
       : null;
+    // Post-accept refinement poll state (if open or just closed).
+    const rVotes = current.refinementVotes || [];
+    const refinement = {
+      open: current.refinementPollOpen,
+      myVote: rVotes.find((v) => v.voterId === me.voterId)?.needsWork ?? null,
+      voted: rVotes.length,
+      yes: rVotes.filter((v) => v.needsWork).length,
+      score: current.rediscussionScore ?? null,
+    };
     currentPayload = {
       itemId: current.id,
       jiraKey: current.jiraKey,
@@ -41,6 +50,7 @@ export async function GET(_req: Request, { params }: { params: { code: string } 
       myVote: roundVotes.find((v) => v.voterId === me.voterId)?.card ?? null,
       participants,
       analysis,
+      refinement,
     };
   }
 

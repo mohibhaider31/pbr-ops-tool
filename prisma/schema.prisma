@@ -231,10 +231,13 @@ model PokerItem {
   round       Int             @default(1)
   finalPoints Int?
   alignmentScore Int? // 1-5 team alignment at accept time
+  refinementPollOpen Boolean @default(false) // is the post-accept refinement poll active
+  rediscussionScore Int? // 1-5 snapshot after the refinement poll closed
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
 
   votes PokerVote[]
+  refinementVotes RefinementVote[]
 
   @@index([sessionId])
 }
@@ -266,4 +269,37 @@ model DismissedMention {
 
   @@unique([accountId, commentId])
   @@index([accountId])
+}
+
+// Re-discussion tracking. A story accumulates a "needs refinement" flag each
+// time a majority of a poker session votes that it still needs refinement,
+// AFTER points were accepted. The score is derived: 5 minus flagCount, floored
+// at 1. Keyed by board+jiraKey so it persists across separate poker sessions
+// for the same story.
+model StoryRefinement {
+  id        String   @id @default(cuid())
+  boardId   String
+  jiraKey   String
+  flagCount Int      @default(0) // number of sessions that flagged it for refinement
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@unique([boardId, jiraKey])
+  @@index([boardId])
+}
+
+// Per-session refinement poll: individual yes/no votes on "does this story
+// still need refinement?" shown after points are accepted. Cleared logic lives
+// on the PokerItem (one poll per item).
+model RefinementVote {
+  id         String    @id @default(cuid())
+  itemId     String    // the PokerItem this poll belongs to
+  item       PokerItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  voterId    String
+  voterName  String
+  needsWork  Boolean   // true = "needs refinement"
+  createdAt  DateTime  @default(now())
+
+  @@unique([itemId, voterId])
+  @@index([itemId])
 }

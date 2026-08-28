@@ -51,9 +51,11 @@ export async function POST(req: Request, { params }: { params: { code: string; i
 
     await prisma.pokerItem.update({
       where: { id: item.id },
-      data: { finalPoints: points, alignmentScore: alignmentScore ?? undefined, status: "DONE" },
+      data: { finalPoints: points, alignmentScore: alignmentScore ?? undefined, status: "DONE", refinementPollOpen: true },
     });
     await pusher().trigger(pokerChannel(params.code), POKER_EVENTS.accepted, { itemId: item.id, points, alignmentScore });
+    // Kick off the post-accept "does this still need refinement?" poll.
+    await pusher().trigger(pokerChannel(params.code), POKER_EVENTS.refinementOpen, { itemId: item.id, jiraKey: item.jiraKey });
     return NextResponse.json({ ok: true, points, alignmentScore });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });

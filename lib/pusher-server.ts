@@ -27,4 +27,7 @@ export const POKER_EVENTS = {
   accepted: "accepted",
   queueUpdate: "queue-update", // stories added/changed in the queue
   navigate: "navigate", // organizer moved the room to a different story
+  refinementOpen: "refinement-open", // post-accept "needs refinement?" poll started
+  refinementUpdate: "refinement-update", // someone cast a refinement vote
+  refinementClosed: "refinement-closed", // organizer closed the poll; score finalized
 } as const;
