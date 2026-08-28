@@ -251,3 +251,18 @@ model PokerVote {
 
   @@unique([itemId, round, voterId])
 }
+
+// Tracks Jira comment @-mentions the user has dismissed from their dashboard.
+// A mention is identified by (accountId of viewer, jira comment id). Dismissing
+// hides that specific comment; a NEW comment mentioning them re-appears because
+// it has a different comment id.
+model DismissedMention {
+  id          String   @id @default(cuid())
+  accountId   String   // the mentioned user who dismissed it
+  jiraKey     String   // e.g. RAE-1234
+  commentId   String   // Jira comment id
+  dismissedAt DateTime @default(now())
+
+  @@unique([accountId, commentId])
+  @@index([accountId])
+}

@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getViewer } from "@/lib/viewer";
 import { getSession } from "@/lib/session";
-import { fetchMyJiraStories, fetchIssue } from "@/lib/jira";
+import { fetchMyJiraStories, fetchIssue, fetchMyMentions } from "@/lib/jira";
 import { getCurrentBoard } from "@/lib/board";
 
 // Personal worklist for the logged-in user. Combines:
@@ -93,11 +93,25 @@ export async function GET() {
   await enrich(needsReview);
   await enrich(waitingOnOthers);
 
+  // --- Jira comment @-mentions of me (minus ones I've dismissed) ---
+  let mentions: any[] = [];
+  try {
+    const [found, dismissed] = await Promise.all([
+      fetchMyMentions(viewer.accountId, auth, { projectKey: board.jiraProjectKey }),
+      prisma.dismissedMention.findMany({ where: { accountId: viewer.accountId }, select: { commentId: true } }),
+    ]);
+    const dismissedIds = new Set(dismissed.map((d) => d.commentId));
+    mentions = found.filter((m) => !dismissedIds.has(m.commentId));
+  } catch {
+    mentions = [];
+  }
+
   return NextResponse.json({
     viewerName: viewer.name,
     needsReview,
     waitingOnOthers,
     openQuestions,
     jiraAssigned,
+    mentions,
   });
 }

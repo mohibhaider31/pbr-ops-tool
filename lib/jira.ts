@@ -358,3 +358,95 @@ export function invalidateStoryCache(projectKey?: string) {
   if (projectKey) _storyCache.delete(projectKey);
   else _storyCache.clear();
 }
+
+// --- Comment @-mentions of a user across their project ---
+export type MentionItem = {
+  jiraKey: string;
+  summary: string;
+  commentId: string;
+  author: string;
+  text: string; // plain-text rendering of the comment
+  createdAt: string;
+};
+
+// Recursively pull plain text from an ADF node, and detect whether it mentions
+// the given accountId.
+function adfTextAndMention(node: any, accountId: string): { text: string; mentions: boolean } {
+  let text = "";
+  let mentions = false;
+  if (!node) return { text, mentions };
+  if (node.type === "mention" && node.attrs?.id === accountId) mentions = true;
+  if (node.type === "text" && typeof node.text === "string") text += node.text;
+  if (node.type === "mention" && node.attrs?.text) text += node.attrs.text;
+  if (Array.isArray(node.content)) {
+    for (const child of node.content) {
+      const r = adfTextAndMention(child, accountId);
+      text += r.text;
+      mentions = mentions || r.mentions;
+    }
+  }
+  // add spacing between block nodes
+  if (["paragraph", "heading", "listItem"].includes(node.type)) text += " ";
+  return { text, mentions };
+}
+
+// Find comments across the user's project that @-mention them. Strategy:
+// 1) JQL to find candidate issues (updated recently, in the project) — capped.
+// 2) For each, fetch comments and scan ADF for a mention of the accountId.
+// This is bounded work: we only scan recent/relevant issues, not the whole
+// project, to keep it responsive.
+export async function fetchMyMentions(
+  accountId: string,
+  auth?: JiraAuth,
+  opts?: JiraProjectOpts & { maxIssues?: number }
+): Promise<MentionItem[]> {
+  const projectKey = opts?.projectKey || DEFAULT_PROJECT;
+  const maxIssues = opts?.maxIssues ?? 40;
+
+  // Candidate issues: those updated in the last 60 days in the project. Jira has
+  // no reliable "mentions me in a comment" JQL across all history, so we bound
+  // by recency and scan comments client-side.
+  const jql = `project = ${projectKey} AND updated >= -60d ORDER BY updated DESC`;
+  const search = await jiraFetch(
+    `/rest/api/3/search/jql`,
+    {
+      method: "POST",
+      body: JSON.stringify({ jql, maxResults: maxIssues, fields: ["summary"] }),
+    },
+    auth
+  );
+  const issues: any[] = search.issues || [];
+
+  const mentions: MentionItem[] = [];
+  // Fetch comments per issue in parallel (bounded by maxIssues).
+  await Promise.all(
+    issues.map(async (issue) => {
+      try {
+        const data = await jiraFetch(
+          `/rest/api/3/issue/${issue.key}/comment?maxResults=50&orderBy=-created`,
+          { method: "GET" },
+          auth
+        );
+        for (const c of data.comments || []) {
+          const { text, mentions: hit } = adfTextAndMention(c.body, accountId);
+          if (hit) {
+            mentions.push({
+              jiraKey: issue.key,
+              summary: issue.fields?.summary || issue.key,
+              commentId: String(c.id),
+              author: c.author?.displayName || "Someone",
+              text: text.trim().slice(0, 400),
+              createdAt: c.created,
+            });
+          }
+        }
+      } catch {
+        // skip issues we can't read
+      }
+    })
+  );
+
+  // newest first
+  mentions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  return mentions;
+}

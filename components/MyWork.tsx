@@ -7,12 +7,14 @@ import Toast from "./Toast";
 type ReviewRow = { jiraKey: string; summary?: string; stage: string; myReviewDone: boolean; reviewProgress: string; questionCount: number };
 type QuestionRow = { jiraKey: string; text: string; createdAt: string };
 type JiraRow = { jiraKey: string; summary: string; status: string; storyPoints: number | null; done: boolean };
+type MentionRow = { jiraKey: string; summary: string; commentId: string; author: string; text: string; createdAt: string };
 type Data = {
   viewerName: string;
   needsReview: ReviewRow[];
   waitingOnOthers: ReviewRow[];
   openQuestions: QuestionRow[];
   jiraAssigned: JiraRow[];
+  mentions: MentionRow[];
 };
 
 export default function MyWork() {
@@ -39,10 +41,20 @@ export default function MyWork() {
     else showToast(d.error || "Could not open story");
   };
 
+  const dismissMention = async (m: MentionRow) => {
+    // optimistic: remove from list immediately
+    setData((prev) => prev ? { ...prev, mentions: prev.mentions.filter((x) => x.commentId !== m.commentId) } : prev);
+    await fetch("/api/my-work/dismiss-mention", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jiraKey: m.jiraKey, commentId: m.commentId }),
+    }).catch(() => showToast("Couldn't dismiss — try again"));
+  };
+
   if (error) return <div className="p-8"><div className="border border-amberBorder bg-amberBg p-4 text-sm text-amberTextDark">{error}</div></div>;
   if (!data) return <div className="p-8 text-sm text-muted2 font-mono">Loading your work…</div>;
 
-  const totalItems = data.needsReview.length + data.waitingOnOthers.length + data.openQuestions.length + data.jiraAssigned.length;
+  const totalItems = data.needsReview.length + data.waitingOnOthers.length + data.openQuestions.length + data.jiraAssigned.length + (data.mentions?.length ?? 0);
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
@@ -75,6 +87,32 @@ export default function MyWork() {
         ) : totalItems > 0 ? (
           <EmptyHint title="Needs my review" tone="accent" text="Nothing assigned to you for review yet. When a PO or BA adds you as a reviewer on a story, it'll show up here to read and comment on." />
         ) : null}
+
+        {/* Mentions — Jira comments where I was @-tagged */}
+        {data.mentions && data.mentions.length > 0 && (
+          <Section title="You were mentioned" count={data.mentions.length} tone="accent">
+            {data.mentions.map((m) => (
+              <div key={m.commentId} className="flex items-start gap-3 px-4 py-3 border-b border-borderFaint last:border-b-0 hover:bg-cream transition-colors">
+                <button onClick={() => openDrawer(m.jiraKey)} className="flex-1 text-left flex flex-col gap-[3px] min-w-0">
+                  <span className="flex items-center gap-2">
+                    <span className="font-mono text-[12px] font-medium text-key">{m.jiraKey}</span>
+                    <span className="text-[12px] text-muted2 overflow-hidden text-ellipsis whitespace-nowrap">{m.summary}</span>
+                  </span>
+                  <span className="text-[13px] text-ink leading-[1.5]">
+                    <span className="text-muted2">{m.author}:</span> {m.text}
+                  </span>
+                </button>
+                <button
+                  onClick={() => dismissMention(m)}
+                  className="flex-none text-[11px] font-semibold text-muted2 hover:text-good border border-border hover:border-good px-[9px] py-[4px] transition-colors"
+                  title="Mark as handled — removes it unless you're tagged again"
+                >
+                  Done
+                </button>
+              </div>
+            ))}
+          </Section>
+        )}
 
         {/* Waiting on others (only when present — no hint needed) */}
         {data.waitingOnOthers.length > 0 && (
