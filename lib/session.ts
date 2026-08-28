@@ -56,6 +56,7 @@ export async function getSession(): Promise<Session | null> {
   let accessExpiresAt = row.accessExpiresAt.getTime();
 
   if (Date.now() + BUFFER_MS >= accessExpiresAt) {
+    console.log("[perf] getSession: token refresh firing (Jira call on this request)");
     try {
       const refreshed = await refreshTokens(row.refreshToken);
       accessToken = refreshed.accessToken;
