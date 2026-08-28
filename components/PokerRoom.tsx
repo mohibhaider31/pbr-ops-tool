@@ -20,7 +20,7 @@ type Analysis = {
 };
 type Refinement = { open: boolean; myVote: boolean | null; voted: number; yes: number; score: number | null };
 type InvestMine = { independent: boolean; negotiable: boolean; valuable: boolean; estimable: boolean; small: boolean; testable: boolean };
-type Invest = { open: boolean; submitted: number; score: number | null; mine: InvestMine | null };
+type Invest = { open: boolean; submitted: number; score: number | null; rollup?: { key: string; ones: number }[]; mine: InvestMine | null };
 type Current = {
   itemId: string; jiraKey: string; summary: string;
   state: "VOTING" | "REVEALED"; round: number; finalPoints: number | null;
@@ -455,6 +455,7 @@ export default function PokerRoom({ code }: { code: string }) {
         <InvestPoll
           invest={cur.invest}
           jiraKey={cur.jiraKey}
+          summary={cur.summary}
           isOrganizer={s.isOrganizer}
           onSubmit={investSubmit}
           onClose={investClose}

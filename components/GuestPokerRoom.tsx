@@ -243,6 +243,7 @@ export default function GuestPokerRoom({ code, name }: { code: string; name: str
         <InvestPoll
           invest={cur.invest}
           jiraKey={cur.jiraKey}
+          summary={cur.summary}
           isOrganizer={false}
           onSubmit={investSubmit}
           onClose={() => {}}

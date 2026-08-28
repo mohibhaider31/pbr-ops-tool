@@ -43,10 +43,20 @@ export async function GET(_req: Request, { params }: { params: { code: string } 
     // Post-refinement INVEST scoring poll state.
     const iVotes = current.investVotes || [];
     const myInvest = iVotes.find((v) => v.voterId === me.voterId) || null;
+    const iTotal = iVotes.length;
+    const crit: { key: string; ones: number }[] = [
+      { key: "independent", ones: iVotes.filter((v) => v.independent).length },
+      { key: "negotiable", ones: iVotes.filter((v) => v.negotiable).length },
+      { key: "valuable", ones: iVotes.filter((v) => v.valuable).length },
+      { key: "estimable", ones: iVotes.filter((v) => v.estimable).length },
+      { key: "small", ones: iVotes.filter((v) => v.small).length },
+      { key: "testable", ones: iVotes.filter((v) => v.testable).length },
+    ];
     const invest = {
       open: current.investPollOpen,
-      submitted: iVotes.length,
+      submitted: iTotal,
       score: current.investScore ?? null,
+      rollup: crit, // per-criterion ones-count, for the results bars
       mine: myInvest
         ? {
             independent: myInvest.independent, negotiable: myInvest.negotiable, valuable: myInvest.valuable,
