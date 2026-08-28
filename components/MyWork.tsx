@@ -28,9 +28,24 @@ export default function MyWork() {
     const res = await fetch("/api/my-work");
     const d = await res.json();
     if (d.error) setError(d.error);
-    else setData(d);
+    else setData({ ...d, mentions: [] });
   }, []);
   useEffect(() => { load(); }, [load]);
+
+  // Mentions cost 1 Jira search + up to 40 comment fetches, so they load
+  // AFTER the page is already usable rather than blocking it.
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/my-work/mentions")
+      .then((r) => r.json())
+      .then((d) => {
+        if (alive && Array.isArray(d?.mentions)) {
+          setData((prev) => (prev ? { ...prev, mentions: d.mentions } : prev));
+        }
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
 
   const showToast = (m: string) => { setToast(m); setTimeout(() => setToast(null), 2600); };
 

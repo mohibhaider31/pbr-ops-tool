@@ -300,6 +300,37 @@ export async function fetchReadyForDevStories(auth?: JiraAuth, opts?: JiraProjec
   return mapped;
 }
 
+
+// Fetch many issues in ONE JQL call instead of N sequential /issue/{key}
+// requests. Replaces the my-work enrich() loop, which made one Jira HTTP
+// round-trip per review row.
+export async function fetchIssuesByKeys(keys: string[], auth?: JiraAuth): Promise<Map<string, JiraIssue>> {
+  const out = new Map<string, JiraIssue>();
+  const unique = Array.from(new Set(keys.filter(Boolean)));
+  if (unique.length === 0) return out;
+
+  // JQL `key IN (...)` - chunk to stay well inside URL/complexity limits.
+  const CHUNK = 100;
+  for (let i = 0; i < unique.length; i += CHUNK) {
+    const slice = unique.slice(i, i + CHUNK);
+    const jql = `key IN (${slice.join(",")})`;
+    try {
+      const data = await jiraFetch(
+        `/rest/api/3/search/jql`,
+        { method: "POST", body: JSON.stringify({ jql, maxResults: CHUNK, fields: BACKLOG_FIELDS }) },
+        auth
+      );
+      for (const raw of data.issues || []) {
+        const mapped = mapIssue(raw);
+        out.set(mapped.key, mapped);
+      }
+    } catch {
+      // Non-fatal: callers fall back to showing the key.
+    }
+  }
+  return out;
+}
+
 // --- My Work: stories assigned to a user in Jira (native assignee) ---
 export async function fetchMyJiraStories(accountId: string, auth?: JiraAuth, opts?: JiraProjectOpts): Promise<JiraIssue[]> {
   const projectKey = opts?.projectKey || DEFAULT_PROJECT;

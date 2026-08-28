@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getViewer } from "@/lib/viewer";
 import { getSession } from "@/lib/session";
-import { fetchMyJiraStories, fetchIssue, fetchMyMentions } from "@/lib/jira";
+import { fetchMyJiraStories, fetchIssuesByKeys } from "@/lib/jira";
 import { getCurrentBoard } from "@/lib/board";
 
 // Personal worklist for the logged-in user. Combines:
@@ -86,33 +86,17 @@ export async function GET() {
     jiraAssigned = [];
   }
 
-  // Enrich review rows with a fresh summary from Jira (best-effort, cached per key).
-  const summaryCache = new Map<string, string>();
-  const enrich = async (rows: any[]) => {
-    for (const r of rows) {
-      if (summaryCache.has(r.jiraKey)) { r.summary = summaryCache.get(r.jiraKey); continue; }
-      try {
-        const issue = await fetchIssue(r.jiraKey);
-        summaryCache.set(r.jiraKey, issue.summary);
-        r.summary = issue.summary;
-      } catch { r.summary = r.jiraKey; }
-    }
-  };
-  await enrich(needsReview);
-  await enrich(waitingOnOthers);
-
-  // --- Jira comment @-mentions of me (minus ones I've dismissed) ---
-  let mentions: any[] = [];
-  try {
-    const [found, dismissed] = await Promise.all([
-      fetchMyMentions(viewer.accountId, auth, { projectKey: board.jiraProjectKey }),
-      prisma.dismissedMention.findMany({ where: { accountId: viewer.accountId }, select: { commentId: true } }),
-    ]);
-    const dismissedIds = new Set(dismissed.map((d) => d.commentId));
-    mentions = found.filter((m) => !dismissedIds.has(m.commentId));
-  } catch {
-    mentions = [];
+  // Enrich review rows with fresh summaries. This was a sequential N+1: one
+  // Jira HTTP request per row. Now a single batched JQL call for every key.
+  const keys = [...needsReview, ...waitingOnOthers].map((r) => r.jiraKey);
+  const issueByKey = await fetchIssuesByKeys(keys, auth);
+  for (const r of [...needsReview, ...waitingOnOthers]) {
+    r.summary = issueByKey.get(r.jiraKey)?.summary ?? r.jiraKey;
   }
+
+  // Mentions are NOT fetched here - they cost 1 search + up to 40 Jira comment
+  // requests. The client loads /api/my-work/mentions separately so this page
+  // can render as soon as the local data is ready.
 
   return NextResponse.json({
     viewerName: viewer.name,
@@ -120,6 +104,5 @@ export async function GET() {
     waitingOnOthers,
     openQuestions,
     jiraAssigned,
-    mentions,
   });
 }
