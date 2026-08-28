@@ -59,40 +59,52 @@ export default function PeopleSettings() {
   };
 
   const setRole = async (p: Person, role: BoardRole) => {
+    const prevRole = p.role, prevMember = p.isMember;
     setPeople((prev) => prev?.map((x) => (x.id === p.id ? { ...x, role, isMember: true } : x)) || prev);
-    await fetch(`/api/people/${p.id}`, {
+    const res = await fetch(`/api/people/${p.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ role }),
     });
-    load();
+    if (!res.ok) {
+      setPeople((prev) => prev?.map((x) => (x.id === p.id ? { ...x, role: prevRole, isMember: prevMember } : x)) || prev);
+      showToast("Couldn't change role");
+    }
   };
 
   const removeFromBoard = async (p: Person) => {
     if (!window.confirm(`Remove ${p.name} from this board? They keep their access to other boards.`)) return;
-    await fetch(`/api/people/${p.id}`, {
+    const snapshot = people;
+    setPeople((prev) => prev?.map((x) => (x.id === p.id ? { ...x, isMember: false, role: null } : x)) || prev);
+    const res = await fetch(`/api/people/${p.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ removeFromBoard: true }),
     });
-    load();
+    if (!res.ok) { setPeople(snapshot); showToast("Couldn't remove from board"); }
   };
 
   const toggleAdmin = async (p: Person) => {
+    const next = !p.isAdmin;
+    setPeople((prev) => prev?.map((x) => (x.id === p.id ? { ...x, isAdmin: next } : x)) || prev);
     const res = await fetch(`/api/people/${p.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ isAdmin: !p.isAdmin }),
+      body: JSON.stringify({ isAdmin: next }),
     });
-    const data = await res.json();
-    if (data.error) showToast(data.error);
-    load();
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.error) {
+      setPeople((prev) => prev?.map((x) => (x.id === p.id ? { ...x, isAdmin: !next } : x)) || prev);
+      showToast(data.error || "Couldn't change admin");
+    }
   };
 
   const removePerson = async (p: Person) => {
     if (!window.confirm(`Remove ${p.name}?`)) return;
-    await fetch(`/api/people/${p.id}`, { method: "DELETE" });
-    load();
+    const snapshot = people;
+    setPeople((prev) => prev?.filter((x) => x.id !== p.id) || prev);
+    const res = await fetch(`/api/people/${p.id}`, { method: "DELETE" });
+    if (!res.ok) { setPeople(snapshot); showToast("Couldn't remove"); }
   };
 
   const addManual = async () => {
