@@ -79,6 +79,22 @@ export default function PipelineBoard() {
     setTimeout(() => setToast(null), 2600);
   };
 
+  // Apply a single layer change to local state. Replaces the old pattern of
+  // refetching the ENTIRE pipeline (which scans Jira) after changing one cell.
+  const patchCell = (
+    jiraKey: string,
+    layer: string,
+    patch: Partial<{ status: any; owner: string | null; sprint: string | null; doneAt: string | null }>
+  ) => {
+    setRows((prev) =>
+      prev?.map((r) =>
+        r.jiraKey === jiraKey
+          ? { ...r, layers: r.layers.map((l) => (l.layer === layer ? { ...l, ...patch } : l)) }
+          : r
+      ) || prev
+    );
+  };
+
   const cycleStatus = async (row: Row, cell: LayerCell) => {
     if (!can("pipeline_edit")) return;
     const next = STATUS_ORDER[(STATUS_ORDER.indexOf(cell.status) + 1) % STATUS_ORDER.length];
@@ -95,8 +111,13 @@ export default function PipelineBoard() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: next }),
     });
-    if (!res.ok) showToast("Update failed");
-    load();
+    if (!res.ok) {
+      patchCell(row.jiraKey, cell.layer, { status: cell.status }); // rollback
+      showToast("Update failed");
+      return;
+    }
+    const d = await res.json().catch(() => null);
+    if (d?.track) patchCell(row.jiraKey, cell.layer, { doneAt: d.track.doneAt ?? null });
   };
 
   const setOwner = (row: Row, cell: LayerCell) => {
@@ -108,12 +129,17 @@ export default function PipelineBoard() {
     if (!ownerTarget) return;
     const { row, cell } = ownerTarget;
     setOwnerTarget(null);
-    await fetch(`/api/pipeline/${row.jiraKey}/${cell.layer}`, {
+    const prevOwner = cell.owner;
+    patchCell(row.jiraKey, cell.layer, { owner: name });
+    const res = await fetch(`/api/pipeline/${row.jiraKey}/${cell.layer}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ owner: name }),
     });
-    load();
+    if (!res.ok) {
+      patchCell(row.jiraKey, cell.layer, { owner: prevOwner });
+      showToast("Couldn't set owner");
+    }
   };
 
   const setSprint = async (row: Row, cell: LayerCell) => {
@@ -123,20 +149,31 @@ export default function PipelineBoard() {
       cell.sprint || ""
     );
     if (sprint === null) return;
-    await fetch(`/api/pipeline/${row.jiraKey}/${cell.layer}`, {
+    const prevSprint = cell.sprint;
+    const nextSprint = sprint.trim() || null;
+    patchCell(row.jiraKey, cell.layer, { sprint: nextSprint });
+    const res = await fetch(`/api/pipeline/${row.jiraKey}/${cell.layer}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sprint: sprint.trim() || null }),
+      body: JSON.stringify({ sprint: nextSprint }),
     });
-    load();
+    if (!res.ok) {
+      patchCell(row.jiraKey, cell.layer, { sprint: prevSprint });
+      showToast("Couldn't set sprint");
+    }
   };
 
   const removeMember = async (row: Row) => {
     if (!can("pipeline_edit")) return;
     if (!window.confirm(`Remove ${row.jiraKey} from the pipeline? Layer statuses are kept if you re-add it.`)) return;
-    await fetch(`/api/pipeline/member/${row.jiraKey}`, { method: "DELETE" });
+    const snapshot = rows;
+    setRows((prev) => prev?.filter((r) => r.jiraKey !== row.jiraKey) || prev);
     showToast(`${row.jiraKey} removed from pipeline`);
-    load();
+    const res = await fetch(`/api/pipeline/member/${row.jiraKey}`, { method: "DELETE" });
+    if (!res.ok) {
+      setRows(snapshot);
+      showToast("Couldn't remove — restored");
+    }
   };
 
   const stats = useMemo(() => {

@@ -69,7 +69,11 @@ export async function POST(
     );
 
     await prisma.$transaction(ops);
-    return NextResponse.json({ ok: true, added: toAdd.length, removed: toRemove.length });
+    const updated = await prisma.story.findUnique({
+      where: { id: story.id },
+      include: { assignees: true, comments: { orderBy: { createdAt: "asc" } } },
+    });
+    return NextResponse.json({ ok: true, story: updated, added: toAdd.length, removed: toRemove.length });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
@@ -133,7 +137,11 @@ export async function PATCH(
       data: { stage: allDone ? "IN_REVIEW" : "ASSIGNED" },
     });
 
-    return NextResponse.json({ ok: true, markedDone: nextDone, allDone });
+    const fresh = await prisma.story.findUnique({
+      where: { id: story.id },
+      include: { assignees: true, comments: { orderBy: { createdAt: "asc" } } },
+    });
+    return NextResponse.json({ ok: true, markedDone: nextDone, allDone, story: fresh });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }

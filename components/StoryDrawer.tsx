@@ -17,7 +17,7 @@ export default function StoryDrawer({
 }: {
   story: Story;
   onClose: () => void;
-  onChanged: () => void;
+  onChanged: (updated?: any) => void;
   onToast: (msg: string) => void;
 }) {
   const { can, viewer } = useViewer();
@@ -49,13 +49,14 @@ export default function StoryDrawer({
     const remaining = story.assignees
       .filter((a) => a.email !== email)
       .map((a) => ({ name: a.name, email: a.email, accountId: (a as any).accountId ?? null }));
-    await fetch(`/api/stories/${story.jiraKey}/assign`, {
+    const res = await fetch(`/api/stories/${story.jiraKey}/assign`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ assignees: remaining }),
     });
+    const d = await res.json().catch(() => null);
     setBusy(false);
-    onChanged();
+    onChanged(d?.story);
   };
 
   const toggleMyReview = () => {
@@ -68,7 +69,8 @@ export default function StoryDrawer({
         body: JSON.stringify({}),
       });
       if (!res.ok) throw new Error("review sync failed");
-      onChanged();
+      const d = await res.json().catch(() => null);
+      onChanged(d?.story);
     });
   };
 
@@ -84,7 +86,8 @@ export default function StoryDrawer({
         body: JSON.stringify({ author: "You", text, isQuestion, syncToJira: mirror }),
       });
       if (!res.ok) throw new Error("comment sync failed");
-      onChanged();
+      const d = await res.json().catch(() => null);
+      onChanged(d?.story);
     });
   };
 
@@ -158,7 +161,7 @@ export default function StoryDrawer({
                       ],
                     }),
                   })
-                    .then(() => onChanged())
+                    .then(async (r) => { const d = await r.json().catch(() => null); onChanged(d?.story); })
                     .catch(() => onToast("Couldn't assign — try again"));
                 }}
               />

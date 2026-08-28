@@ -149,6 +149,16 @@ export default function BacklogBoard() {
     });
   };
 
+  // Patch one story in place from a mutation response. Replaces the old
+  // onChanged={load}, which refetched the ENTIRE backlog (including the Jira
+  // scan) after every comment, assign, or review toggle.
+  const applyStoryUpdate = useCallback((updated?: any) => {
+    if (!updated?.jiraKey) { load(); return; } // fall back if the route didn't return one
+    setStories((prev) =>
+      prev?.map((s) => (s.jiraKey === updated.jiraKey ? { ...s, ...updated, jira: s.jira } : s)) || prev
+    );
+  }, [load]);
+
   const openStory = stories?.find((s) => s.jiraKey === openKey) || null;
 
   if (error) {
@@ -365,7 +375,7 @@ export default function BacklogBoard() {
         <StoryDrawer
           story={openStory}
           onClose={() => setOpenKey(null)}
-          onChanged={load}
+          onChanged={applyStoryUpdate}
           onToast={showToast}
         />
       )}
