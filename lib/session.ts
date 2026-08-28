@@ -3,6 +3,7 @@
 // table. This keeps the cookie tiny and robust (no multi-KB tokens in the
 // browser) and allows server-side refresh/revocation.
 
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { refreshTokens } from "@/lib/atlassian-oauth";
@@ -40,7 +41,10 @@ export async function createSession(data: NewSession): Promise<string> {
   return row.id;
 }
 
-export async function getSession(): Promise<Session | null> {
+// Memoised per request. getSession is called by getViewer, getCurrentBoard,
+// getParticipant and many routes directly - without this it re-queried
+// AuthSession (and could re-run the token refresh) on every single call.
+export const getSession = cache(async function getSession(): Promise<Session | null> {
   const id = cookies().get(COOKIE_NAME)?.value;
   if (!id) return null;
   const row = await prisma.authSession.findUnique({ where: { id } });
@@ -88,7 +92,7 @@ export async function getSession(): Promise<Session | null> {
     refreshToken,
     accessExpiresAt,
   };
-}
+});
 
 export async function deleteSession(id: string) {
   await prisma.authSession.deleteMany({ where: { id } });

@@ -2,6 +2,7 @@
 // creating it on first login. Seeds the bootstrap account as Admin. Product
 // roles are per-board now (see lib/board.ts + BoardMembership), not here.
 
+import { cache } from "react";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
 
@@ -16,7 +17,9 @@ export type Viewer = {
   isAdmin: boolean;
 };
 
-export async function getViewer(): Promise<Viewer | null> {
+// Memoised per request. getCurrentBoard called this twice (directly and via
+// getAccessibleBoards), and routes often call it again themselves.
+export const getViewer = cache(async function getViewer(): Promise<Viewer | null> {
   const session = await getSession();
   if (!session) return null;
 
@@ -71,4 +74,4 @@ export async function getViewer(): Promise<Viewer | null> {
     avatarUrl: person.avatarUrl,
     isAdmin: person.isAdmin,
   };
-}
+});

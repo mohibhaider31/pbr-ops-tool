@@ -2,6 +2,7 @@
 // config. The selected board is stored in a cookie; falls back to the user's
 // default/first board.
 
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { getViewer } from "@/lib/viewer";
@@ -21,7 +22,8 @@ export type BoardConfig = {
 };
 
 // Boards the current user can access (their memberships; admins see all).
-export async function getAccessibleBoards() {
+// Memoised per request - getCurrentBoard and the viewer route both use it.
+export const getAccessibleBoards = cache(async function getAccessibleBoards() {
   const viewer = await getViewer();
   if (!viewer) return [];
   if (viewer.isAdmin) {
@@ -34,10 +36,11 @@ export async function getAccessibleBoards() {
   return memberships
     .map((m) => m.board)
     .sort((a, b) => (a.isDefault === b.isDefault ? a.name.localeCompare(b.name) : a.isDefault ? -1 : 1));
-}
+});
 
 // The currently-selected board for this request, with the viewer's role on it.
-export async function getCurrentBoard(): Promise<BoardConfig | null> {
+// Memoised per request. Several routes call this more than once.
+export const getCurrentBoard = cache(async function getCurrentBoard(): Promise<BoardConfig | null> {
   const viewer = await getViewer();
   if (!viewer) return null;
 
@@ -69,7 +72,7 @@ export async function getCurrentBoard(): Promise<BoardConfig | null> {
     role,
     isAdmin: viewer.isAdmin,
   };
-}
+});
 
 export function setBoardCookie(boardId: string) {
   cookies().set(BOARD_COOKIE, boardId, { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 60 * 60 * 24 * 365 });
