@@ -233,11 +233,14 @@ model PokerItem {
   alignmentScore Int? // 1-5 team alignment at accept time
   refinementPollOpen Boolean @default(false) // is the post-accept refinement poll active
   rediscussionScore Int? // 1-5 snapshot after the refinement poll closed
+  investPollOpen Boolean @default(false) // is the INVEST scoring poll active
+  investScore Float? // 0-6 average across participants, snapshot when closed
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
 
   votes PokerVote[]
   refinementVotes RefinementVote[]
+  investVotes InvestVote[]
 
   @@index([sessionId])
 }
@@ -299,6 +302,27 @@ model RefinementVote {
   voterName  String
   needsWork  Boolean   // true = "needs refinement"
   createdAt  DateTime  @default(now())
+
+  @@unique([itemId, voterId])
+  @@index([itemId])
+}
+
+// INVEST scoring. After the refinement poll, each participant scores the story
+// on the 6 INVEST components (each 0 or 1). Their per-person total is 0-6. The
+// story's INVEST score = average of all participants' totals, out of 6.
+model InvestVote {
+  id           String    @id @default(cuid())
+  itemId       String
+  item         PokerItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  voterId      String
+  voterName    String
+  independent  Boolean   @default(false)
+  negotiable   Boolean   @default(false)
+  valuable     Boolean   @default(false)
+  estimable    Boolean   @default(false)
+  small        Boolean   @default(false)
+  testable     Boolean   @default(false)
+  createdAt    DateTime  @default(now())
 
   @@unique([itemId, voterId])
   @@index([itemId])

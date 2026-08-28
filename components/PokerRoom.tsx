@@ -8,6 +8,7 @@ import { usePokerChannel } from "@/lib/usePusher";
 import Toast from "./Toast";
 import { useSync } from "./SyncProvider";
 import RefinementPoll from "./RefinementPoll";
+import InvestPoll from "./InvestPoll";
 import PokerAddStories from "./PokerAddStories";
 
 type Participant = { voterId: string; voterName: string; voted: boolean; card: string | null };
@@ -18,11 +19,14 @@ type Analysis = {
   distribution: { card: string; count: number }[];
 };
 type Refinement = { open: boolean; myVote: boolean | null; voted: number; yes: number; score: number | null };
+type InvestMine = { independent: boolean; negotiable: boolean; valuable: boolean; estimable: boolean; small: boolean; testable: boolean };
+type Invest = { open: boolean; submitted: number; score: number | null; mine: InvestMine | null };
 type Current = {
   itemId: string; jiraKey: string; summary: string;
   state: "VOTING" | "REVEALED"; round: number; finalPoints: number | null;
   myVote: string | null; participants: Participant[]; analysis: Analysis | null;
   refinement: Refinement;
+  invest: Invest;
 };
 type QueueItem = { itemId: string; jiraKey: string; summary: string; status: "PENDING" | "DONE"; finalPoints: number | null; isCurrent: boolean };
 type State = { code: string; organizerName: string; isOrganizer: boolean; queue: QueueItem[]; current: Current | null };
@@ -75,6 +79,9 @@ export default function PokerRoom({ code }: { code: string }) {
     "refinement-open": () => debouncedLoad(),
     "refinement-update": () => debouncedLoad(),
     "refinement-closed": () => debouncedLoad(),
+    "invest-open": () => debouncedLoad(),
+    "invest-update": () => debouncedLoad(),
+    "invest-closed": () => debouncedLoad(),
   });
 
   const showToast = (m: string) => { setToast(m); setTimeout(() => setToast(null), 2600); };
@@ -145,6 +152,18 @@ export default function PokerRoom({ code }: { code: string }) {
   const refinementClose = async () => {
     if (!cur) return;
     await fetch(`/api/poker/${code}/item/${cur.itemId}/refinement-close`, { method: "POST" });
+    load();
+  };
+  const investSubmit = (scores: any) => {
+    if (!cur) return;
+    setS((p) => (p && p.current ? { ...p, current: { ...p.current, invest: { ...p.current.invest, mine: scores } } } : p));
+    fetch(`/api/poker/${code}/item/${cur.itemId}/invest-vote`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(scores),
+    }).catch(() => {});
+  };
+  const investClose = async () => {
+    if (!cur) return;
+    await fetch(`/api/poker/${code}/item/${cur.itemId}/invest-close`, { method: "POST" });
     load();
   };
 
@@ -430,6 +449,15 @@ export default function PokerRoom({ code }: { code: string }) {
           isOrganizer={s.isOrganizer}
           onVote={refinementVote}
           onClose={refinementClose}
+        />
+      )}
+      {cur && cur.invest && cur.invest.open && (
+        <InvestPoll
+          invest={cur.invest}
+          jiraKey={cur.jiraKey}
+          isOrganizer={s.isOrganizer}
+          onSubmit={investSubmit}
+          onClose={investClose}
         />
       )}
       {toast && <Toast message={toast} />}

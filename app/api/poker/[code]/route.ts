@@ -10,7 +10,7 @@ export async function GET(_req: Request, { params }: { params: { code: string } 
 
   const session = await prisma.pokerSession.findUnique({
     where: { code: params.code },
-    include: { items: { orderBy: { order: "asc" }, include: { votes: true, refinementVotes: true } } },
+    include: { items: { orderBy: { order: "asc" }, include: { votes: true, refinementVotes: true, investVotes: true } } },
   });
   if (!session) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
@@ -40,6 +40,20 @@ export async function GET(_req: Request, { params }: { params: { code: string } 
       yes: rVotes.filter((v) => v.needsWork).length,
       score: current.rediscussionScore ?? null,
     };
+    // Post-refinement INVEST scoring poll state.
+    const iVotes = current.investVotes || [];
+    const myInvest = iVotes.find((v) => v.voterId === me.voterId) || null;
+    const invest = {
+      open: current.investPollOpen,
+      submitted: iVotes.length,
+      score: current.investScore ?? null,
+      mine: myInvest
+        ? {
+            independent: myInvest.independent, negotiable: myInvest.negotiable, valuable: myInvest.valuable,
+            estimable: myInvest.estimable, small: myInvest.small, testable: myInvest.testable,
+          }
+        : null,
+    };
     currentPayload = {
       itemId: current.id,
       jiraKey: current.jiraKey,
@@ -51,6 +65,7 @@ export async function GET(_req: Request, { params }: { params: { code: string } 
       participants,
       analysis,
       refinement,
+      invest,
     };
   }
 

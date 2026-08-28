@@ -30,4 +30,7 @@ export const POKER_EVENTS = {
   refinementOpen: "refinement-open", // post-accept "needs refinement?" poll started
   refinementUpdate: "refinement-update", // someone cast a refinement vote
   refinementClosed: "refinement-closed", // organizer closed the poll; score finalized
+  investOpen: "invest-open", // INVEST scoring poll started
+  investUpdate: "invest-update", // someone submitted their INVEST scores
+  investClosed: "invest-closed", // organizer closed INVEST; score finalized
 } as const;

@@ -49,7 +49,7 @@ export async function POST(_req: Request, { params }: { params: { code: string; 
 
   await prisma.pokerItem.update({
     where: { id: item.id },
-    data: { refinementPollOpen: false, rediscussionScore },
+    data: { refinementPollOpen: false, rediscussionScore, investPollOpen: true },
   });
 
   // Best-effort Jira note when it was flagged.
@@ -69,5 +69,7 @@ export async function POST(_req: Request, { params }: { params: { code: string; 
   await pusher().trigger(pokerChannel(params.code), POKER_EVENTS.refinementClosed, {
     itemId: item.id, rediscussionScore, flagged: majorityNeedsWork, yes, total,
   });
+  // Chain straight into INVEST scoring.
+  await pusher().trigger(pokerChannel(params.code), POKER_EVENTS.investOpen, { itemId: item.id, jiraKey: item.jiraKey });
   return NextResponse.json({ ok: true, rediscussionScore, flagged: majorityNeedsWork, yes, total });
 }

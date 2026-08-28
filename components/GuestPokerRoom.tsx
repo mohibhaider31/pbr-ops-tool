@@ -5,6 +5,7 @@ import { usePokerChannel } from "@/lib/usePusher";
 import { DECK } from "@/lib/poker";
 import { avatarColor, initials } from "@/lib/avatar";
 import RefinementPoll from "./RefinementPoll";
+import InvestPoll from "./InvestPoll";
 
 type Participant = { voterId: string; voterName: string; voted: boolean; card: string | null };
 type Analysis = {
@@ -47,6 +48,7 @@ export default function GuestPokerRoom({ code, name }: { code: string; name: str
     "vote-update": () => debouncedLoad(), "revealed": () => debouncedLoad(), "re-vote": () => debouncedLoad(),
     "accepted": () => debouncedLoad(), "queue-update": () => debouncedLoad(), "navigate": () => debouncedLoad(),
     "refinement-open": () => debouncedLoad(), "refinement-update": () => debouncedLoad(), "refinement-closed": () => debouncedLoad(),
+    "invest-open": () => debouncedLoad(), "invest-update": () => debouncedLoad(), "invest-closed": () => debouncedLoad(),
   });
 
   const cur = state?.current;
@@ -75,6 +77,14 @@ export default function GuestPokerRoom({ code, name }: { code: string; name: str
     setState((p: any) => (p && p.current ? { ...p, current: { ...p.current, refinement: { ...p.current.refinement, myVote: needsWork } } } : p));
     fetch(`/api/poker/${code}/item/${cur.itemId}/refinement-vote`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ needsWork }),
+    }).catch(() => {});
+  };
+
+  const investSubmit = (scores: any) => {
+    if (!cur) return;
+    setState((p: any) => (p && p.current ? { ...p, current: { ...p.current, invest: { ...p.current.invest, mine: scores } } } : p));
+    fetch(`/api/poker/${code}/item/${cur.itemId}/invest-vote`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(scores),
     }).catch(() => {});
   };
 
@@ -226,6 +236,15 @@ export default function GuestPokerRoom({ code, name }: { code: string; name: str
           jiraKey={cur.jiraKey}
           isOrganizer={false}
           onVote={refinementVote}
+          onClose={() => {}}
+        />
+      )}
+      {cur && cur.invest && cur.invest.open && (
+        <InvestPoll
+          invest={cur.invest}
+          jiraKey={cur.jiraKey}
+          isOrganizer={false}
+          onSubmit={investSubmit}
           onClose={() => {}}
         />
       )}
