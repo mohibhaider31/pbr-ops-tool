@@ -22,10 +22,18 @@ export async function GET() {
   const auth = session ? { accessToken: session.accessToken, cloudId: session.cloudId } : undefined;
 
   // --- Review assignments (this tool), matched by email ---
+  // Match on the stable accountId first; fall back to email for rows created
+  // before accountId was stored.
   const myEmail = viewer.email;
-  const myAssignments = myEmail
+  const myAssignments = (viewer.accountId || myEmail)
     ? await prisma.assignee.findMany({
-        where: { email: myEmail, story: { boardId: board.id } },
+        where: {
+          story: { boardId: board.id },
+          OR: [
+            ...(viewer.accountId ? [{ accountId: viewer.accountId }] : []),
+            ...(myEmail ? [{ email: myEmail }] : []),
+          ],
+        },
         include: {
           story: { include: { assignees: true, comments: true } },
         },

@@ -2,6 +2,7 @@ export type Assignee = {
   id: string;
   name: string;
   email: string;
+  accountId?: string | null; // stable Atlassian identity; null on legacy rows
   markedDone: boolean;
 };
 

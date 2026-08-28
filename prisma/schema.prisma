@@ -45,11 +45,16 @@ model Assignee {
   story      Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
   name       String
   email      String
+  // Atlassian account id - the stable identity. Email can change; accountId
+  // cannot. Nullable so existing rows and manually-added (not-yet-registered)
+  // reviewers keep working; matching falls back to email when this is null.
+  accountId  String?
   markedDone Boolean  @default(false)
   markedDoneAt DateTime?
   createdAt  DateTime @default(now())
 
   @@unique([storyId, email])
+  @@index([accountId])
 }
 
 model Comment {

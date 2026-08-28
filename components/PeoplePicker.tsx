@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { avatarColor, initials } from "@/lib/avatar";
 
-type Person = { id: string; name: string; email: string | null; role: string; active: boolean };
+type Person = { id: string; name: string; email: string | null; accountId: string | null; role: string; active: boolean };
 
 // A searchable dropdown of synced people. Used for review assignees and
 // pipeline owners so those fields pick real humans instead of free text.
@@ -22,15 +22,15 @@ export default function PeoplePicker({
   allowManual = true,
 }: {
   excludeEmails?: string[];
-  onPick?: (person: { name: string; email: string }) => void;
-  onPickMany?: (people: { name: string; email: string }[]) => void;
+  onPick?: (person: { name: string; email: string; accountId?: string | null }) => void;
+  onPickMany?: (people: { name: string; email: string; accountId?: string | null }[]) => void;
   multi?: boolean;
   placeholder?: string;
   allowManual?: boolean;
 }) {
   const [people, setPeople] = useState<Person[] | null>(null);
   const [query, setQuery] = useState("");
-  const [selected, setSelected] = useState<Map<string, { name: string; email: string }>>(new Map());
+  const [selected, setSelected] = useState<Map<string, { name: string; email: string; accountId?: string | null }>>(new Map());
 
   useEffect(() => {
     fetch("/api/people")
@@ -52,7 +52,7 @@ export default function PeoplePicker({
   const looksLikeEmail = /\S+@\S+\.\S+/.test(query.trim());
 
   // In multi mode a click toggles selection; in single mode it fires immediately.
-  const handlePick = (person: { name: string; email: string }, key: string) => {
+  const handlePick = (person: { name: string; email: string; accountId?: string | null }, key: string) => {
     if (multi) {
       setSelected((prev) => {
         const next = new Map(prev);
@@ -94,7 +94,7 @@ export default function PeoplePicker({
           return (
             <button
               key={p.id}
-              onClick={() => handlePick({ name: p.name, email: p.email || p.name }, key)}
+              onClick={() => handlePick({ name: p.name, email: p.email || p.name, accountId: p.accountId }, key)}
               className={`flex items-center gap-[9px] px-1 py-[6px] hover:bg-white text-left transition-colors ${isSel ? "bg-white" : ""}`}
             >
               {multi && (

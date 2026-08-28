@@ -48,7 +48,7 @@ export default function StoryDrawer({
     setBusy(true);
     const remaining = story.assignees
       .filter((a) => a.email !== email)
-      .map((a) => ({ name: a.name, email: a.email }));
+      .map((a) => ({ name: a.name, email: a.email, accountId: (a as any).accountId ?? null }));
     await fetch(`/api/stories/${story.jiraKey}/assign`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -65,7 +65,7 @@ export default function StoryDrawer({
       const res = await fetch(`/api/stories/${story.jiraKey}/assign`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: myEmail }),
+        body: JSON.stringify({}),
       });
       if (!res.ok) throw new Error("review sync failed");
       onChanged();
@@ -153,7 +153,7 @@ export default function StoryDrawer({
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                       assignees: [
-                        ...story.assignees.map((a) => ({ name: a.name, email: a.email })),
+                        ...story.assignees.map((a) => ({ name: a.name, email: a.email, accountId: (a as any).accountId ?? null })),
                         ...people,
                       ],
                     }),
