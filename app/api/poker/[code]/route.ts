@@ -6,17 +6,22 @@ import { analyze } from "@/lib/poker";
 
 export async function GET(_req: Request, { params }: { params: { code: string } }) {
   const t0 = Date.now();
-  const me = await getParticipant(params.code);
-  const tParticipant = Date.now();
-  if (!me) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const session = await prisma.pokerSession.findUnique({
-    where: { code: params.code },
-    include: { items: { orderBy: { order: "asc" }, include: { votes: true, refinementVotes: true, investVotes: true } } },
-  });
-  const tQuery = Date.now();
+  // Resolve the participant and load the session in PARALLEL — the session
+  // query doesn't depend on knowing who the viewer is, only the response
+  // shaping does. Running them together collapses two sequential round-trips
+  // into one wall-clock wait.
+  const [me, session] = await Promise.all([
+    getParticipant(params.code),
+    prisma.pokerSession.findUnique({
+      where: { code: params.code },
+      include: { items: { orderBy: { order: "asc" }, include: { votes: true, refinementVotes: true, investVotes: true } } },
+    }),
+  ]);
+  console.log(`[perf] poker-read code=${params.code} total=${Date.now() - t0}ms`);
+
+  if (!me) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (!session) return NextResponse.json({ error: "not_found" }, { status: 404 });
-  console.log(`[perf] poker-read code=${params.code} participant=${tParticipant - t0}ms query=${tQuery - tParticipant}ms total=${tQuery - t0}ms`);
 
   // Only the authenticated organizer gets organizer controls; guests never do.
   const isOrganizer = !me.isGuest && session.organizerId === me.accountId;
