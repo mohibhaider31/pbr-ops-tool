@@ -3,8 +3,10 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getViewer } from "@/lib/viewer";
 import { getSession } from "@/lib/session";
-import { fetchMyJiraStories, fetchIssuesByKeys } from "@/lib/jira";
+
 import { getCurrentBoard } from "@/lib/board";
+import { waitUntil } from "@vercel/functions";
+import { localStoriesAssignedTo, localIssuesByKeys, refreshIfStale } from "@/lib/readModel";
 
 // Personal worklist for the logged-in user. Combines:
 //  - review assignments in this tool (matched by email), split into
@@ -72,7 +74,7 @@ export async function GET() {
   // --- Jira-assigned to me (by accountId) ---
   let jiraAssigned: any[] = [];
   try {
-    const stories = await fetchMyJiraStories(viewer.accountId, auth, { projectKey: board.jiraProjectKey });
+    const stories = await localStoriesAssignedTo(board.id, viewer.accountId);
     const doneStatuses = ["done", "closed", "resolved", "canceled", "cancelled", "frozen"];
     jiraAssigned = stories.map((s) => ({
       jiraKey: s.key,
@@ -89,7 +91,7 @@ export async function GET() {
   // Enrich review rows with fresh summaries. This was a sequential N+1: one
   // Jira HTTP request per row. Now a single batched JQL call for every key.
   const keys = [...needsReview, ...waitingOnOthers].map((r) => r.jiraKey);
-  const issueByKey = await fetchIssuesByKeys(keys, auth);
+  const issueByKey = await localIssuesByKeys(board.id, keys);
   for (const r of [...needsReview, ...waitingOnOthers]) {
     r.summary = issueByKey.get(r.jiraKey)?.summary ?? r.jiraKey;
   }

@@ -2,8 +2,8 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getViewer } from "@/lib/viewer";
-import { fetchIssue } from "@/lib/jira";
 import { getCurrentBoard } from "@/lib/board";
+import { localIssue } from "@/lib/readModel";
 
 // Fetch one story in the drawer shape (local review data + fresh Jira fields).
 // Used by My Work to open the StoryDrawer without loading the whole backlog.
@@ -14,7 +14,7 @@ export async function GET(_req: Request, { params }: { params: { jiraKey: string
   const board = await getCurrentBoard();
   if (!board) return NextResponse.json({ error: "no board" }, { status: 400 });
 
-  const jira = await fetchIssue(params.jiraKey);
+  const jira = await localIssue(board.id, params.jiraKey);
 
   // Ensure a Story row exists (Jira-assigned stories may not be in the backlog).
   let story = await prisma.story.findUnique({

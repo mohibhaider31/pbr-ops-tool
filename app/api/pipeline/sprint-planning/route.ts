@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
-import { fetchActiveStories } from "@/lib/jira";
+import { localActiveStories } from "@/lib/readModel";
+
 import { prisma } from "@/lib/prisma";
 import { getCurrentBoard } from "@/lib/board";
 import {
@@ -26,7 +27,7 @@ export async function GET() {
       return NextResponse.json({ groups: [], totalOwed: 0 });
 
     const [stories, tracks] = await Promise.all([
-      fetchActiveStories({ projectKey: board.jiraProjectKey }),
+      localActiveStories(board.id, ["Done", "Canceled", "Frozen"]),
       prisma.layerTrack.findMany({ where: { boardId: board.id, jiraKey: { in: memberKeys } } }),
     ]);
     const storyByKey = new Map(stories.map((s) => [s.key, s]));

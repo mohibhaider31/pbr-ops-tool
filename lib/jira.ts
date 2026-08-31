@@ -59,10 +59,12 @@ export type JiraIssue = {
   key: string;
   summary: string;
   status: string;
+  statusCategory: string | null; // "To Do" | "In Progress" | "Done"
   issueType: string;
   storyPoints: number | null;
   labels: string[];
   assignee: string | null;
+  assigneeAccountId: string | null; // stable identity for the read model
 };
 
 function mapIssue(raw: any): JiraIssue {
@@ -70,6 +72,7 @@ function mapIssue(raw: any): JiraIssue {
     key: raw.key,
     summary: raw.fields.summary,
     status: raw.fields.status?.name ?? "Unknown",
+    statusCategory: raw.fields.status?.statusCategory?.name ?? null,
     issueType: raw.fields.issuetype?.name ?? "Story",
     // Story points field ID varies per Jira instance. Confirmed for this
     // instance (Logiciel Services RAE project) via issue ?expand=names:
@@ -79,6 +82,7 @@ function mapIssue(raw: any): JiraIssue {
     storyPoints: raw.fields.customfield_10024 ?? null,
     labels: raw.fields.labels ?? [],
     assignee: raw.fields.assignee?.displayName ?? null,
+    assigneeAccountId: raw.fields.assignee?.accountId ?? null,
   };
 }
 
@@ -367,7 +371,7 @@ export async function fetchMyJiraStories(accountId: string, auth?: JiraAuth, opt
 const _storyCache = new Map<string, { at: number; data: JiraIssue[] }>();
 const STORY_CACHE_MS = 5 * 60_000; // 5 minutes — the full-project scan is slow, so cache aggressively
 
-export async function fetchAllStories(opts?: JiraProjectOpts): Promise<JiraIssue[]> {
+export async function fetchAllStories(opts?: JiraProjectOpts, auth?: JiraAuth): Promise<JiraIssue[]> {
   const projectKey = opts?.projectKey || DEFAULT_PROJECT;
 
   const cached = _storyCache.get(projectKey);
@@ -385,7 +389,7 @@ export async function fetchAllStories(opts?: JiraProjectOpts): Promise<JiraIssue
         fields: BACKLOG_FIELDS,
         ...(nextPageToken ? { nextPageToken } : {}),
       }),
-    });
+    }, auth);
     issues.push(...(data.issues || []));
     nextPageToken = data.isLast ? undefined : data.nextPageToken;
   } while (nextPageToken);

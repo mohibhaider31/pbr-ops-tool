@@ -1,8 +1,9 @@
 export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
-import { fetchActiveStories } from "@/lib/jira";
+
 import { prisma } from "@/lib/prisma";
 import { getCurrentBoard } from "@/lib/board";
+import { localActiveStories } from "@/lib/readModel";
 
 // Active (non-terminal) Jira stories not already in the pipeline — the
 // candidate list for the "Add stories" picker.
@@ -11,7 +12,7 @@ export async function GET() {
     const board = await getCurrentBoard();
     if (!board) return NextResponse.json({ error: "no board" }, { status: 400 });
     const [stories, members] = await Promise.all([
-      fetchActiveStories({ projectKey: board.jiraProjectKey }),
+      localActiveStories(board.id, ["Done", "Canceled", "Frozen"]),
       prisma.pipelineItem.findMany({ where: { boardId: board.id }, select: { jiraKey: true } }),
     ]);
     const memberKeys = new Set(members.map((m) => m.jiraKey));

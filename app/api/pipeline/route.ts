@@ -1,9 +1,11 @@
 export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
-import { fetchActiveStories } from "@/lib/jira";
+
 import { getCurrentBoard } from "@/lib/board";
 import { prisma } from "@/lib/prisma";
 import { LAYERS, emptyCells, deriveHandoff, type LayerCells, type Layer } from "@/lib/pipeline";
+import { waitUntil } from "@vercel/functions";
+import { localActiveStories, refreshIfStale } from "@/lib/readModel";
 
 // Returns only stories explicitly added to the pipeline. Layer cells are
 // joined in; handoff is derived. Jira is queried to get current summary/status
@@ -18,7 +20,9 @@ export async function GET() {
     if (memberKeys.size === 0) return NextResponse.json({ rows: [] });
 
     // Pull active stories from Jira and index by key for fresh summary/status.
-    const stories = await fetchActiveStories({ projectKey: board.jiraProjectKey });
+    // Served from the local read model; Jira refreshed in the background.
+    waitUntil(refreshIfStale(board.id, board.jiraProjectKey, undefined));
+    const stories = await localActiveStories(board.id, ["Done", "Canceled", "Frozen"]);
     const storyByKey = new Map(stories.map((s) => [s.key, s]));
 
     const tracks = await prisma.layerTrack.findMany({

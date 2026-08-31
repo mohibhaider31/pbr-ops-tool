@@ -338,3 +338,39 @@ model InvestVote {
   @@unique([itemId, voterId])
   @@index([itemId])
 }
+
+// Local projection of Jira issues — the application's read model.
+//
+// Jira remains the system of record, but the UI must never wait on Atlassian
+// to render a screen. Backlog, Pipeline, My Work, the poker story picker and
+// the story drawer all read from here. A background sync keeps it fresh.
+model JiraIssue {
+  id                String    @id @default(cuid())
+  boardId           String
+  jiraKey           String
+  summary           String
+  status            String
+  statusCategory    String?   // e.g. "Done" — lets us filter terminal states locally
+  issueType         String?
+  storyPoints       Float?
+  assigneeAccountId String?
+  assigneeName      String?
+  labels            String[]  @default([])
+  jiraUpdatedAt     DateTime?
+  syncedAt          DateTime  @default(now())
+
+  @@unique([boardId, jiraKey])
+  @@index([boardId, status])
+  @@index([assigneeAccountId])
+}
+
+// Tracks when each board's projection was last synced, so a read can decide
+// whether to kick a background refresh.
+model JiraSyncState {
+  boardId    String    @id
+  lastSyncAt DateTime?
+  lastError  String?
+  syncing    Boolean   @default(false)
+  issueCount Int       @default(0)
+  updatedAt  DateTime  @updatedAt
+}
