@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { addJiraComment } from "@/lib/jira";
+import { enqueueOp, runPending } from "@/lib/outbox";
 import { getSession } from "@/lib/session";
 import { getCurrentBoard } from "@/lib/board";
 import { requireCap } from "@/lib/guard";
@@ -33,21 +33,16 @@ export async function POST(
       data: { storyId: story.id, author, text, isQuestion: !!isQuestion },
     });
 
-    // Mirror to Jira in the background - the user should never wait on
-    // Atlassian's API to see their own comment appear.
+    // Mirror to Jira via the durable outbox rather than a best-effort
+    // background call, so a transient Jira failure is retried.
     if (syncToJira) {
-      waitUntil(
-        (async () => {
-          try {
-            const auth = session
-              ? { accessToken: session.accessToken, cloudId: session.cloudId }
-              : undefined;
-            await addJiraComment(params.jiraKey, author, text, auth);
-          } catch (e) {
-            console.error("Jira comment sync failed", e);
-          }
-        })()
-      );
+      await enqueueOp({
+        boardId: board.id,
+        type: "ADD_COMMENT",
+        jiraKey: params.jiraKey,
+        payload: { author, text },
+      });
+      waitUntil(runPending(5).then(() => {}).catch(() => {}));
     }
 
     // Return the whole updated story so the client can patch one row instead

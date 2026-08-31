@@ -3,9 +3,9 @@ import { NextResponse } from "next/server";
 import { waitUntil } from "@vercel/functions";
 import { prisma } from "@/lib/prisma";
 import { getViewer } from "@/lib/viewer";
-import { getSession } from "@/lib/session";
-import { setStoryPoints, addJiraComment } from "@/lib/jira";
+
 import { analyze } from "@/lib/poker";
+import { enqueueOp, runPending } from "@/lib/outbox";
 import { pusher, pokerChannel, POKER_EVENTS } from "@/lib/pusher-server";
 
 export async function POST(req: Request, { params }: { params: { code: string; itemId: string } }) {
@@ -37,23 +37,33 @@ export async function POST(req: Request, { params }: { params: { code: string; i
   waitUntil(pusher().trigger(pokerChannel(params.code), POKER_EVENTS.accepted, { itemId: item.id, points, alignmentScore }).catch(() => {}));
   waitUntil(pusher().trigger(pokerChannel(params.code), POKER_EVENTS.refinementOpen, { itemId: item.id, jiraKey: item.jiraKey }).catch(() => {}));
 
-  waitUntil(
-    (async () => {
-      try {
-        const s = await getSession();
-        const auth = s ? { accessToken: s.accessToken, cloudId: s.cloudId } : undefined;
-        await setStoryPoints(item.jiraKey, points, auth);
-        if (alignmentScore != null) {
-          await addJiraComment(
-            item.jiraKey,
-            viewer.name,
-            `Estimate accepted via Planning Poker: ${points} story points. Team alignment: ${alignmentScore}/5 (${analysis.spreadLabel}).`,
-            auth
-          );
-        }
-      } catch { /* non-fatal; score is safe in our DB, Jira sync can be retried */ }
-    })()
-  );
+  // Durable: enqueue the Jira writes instead of firing them into waitUntil.
+  // If Jira is briefly unavailable the worker retries with backoff, rather
+  // than our DB claiming success for a write Jira never received.
+  await prisma.$transaction([
+    enqueueOp({
+      boardId: session.boardId,
+      type: "SET_STORY_POINTS",
+      jiraKey: item.jiraKey,
+      payload: { points },
+    }),
+    ...(alignmentScore != null
+      ? [
+          enqueueOp({
+            boardId: session.boardId,
+            type: "ADD_COMMENT",
+            jiraKey: item.jiraKey,
+            payload: {
+              author: viewer.name,
+              text: `Estimate accepted via Planning Poker: ${points} story points. Team alignment: ${alignmentScore}/5 (${analysis.spreadLabel}).`,
+            },
+          }),
+        ]
+      : []),
+  ]);
+
+  // Try to drain immediately so the write usually lands within seconds.
+  waitUntil(runPending(5).then(() => {}).catch(() => {}));
 
   return NextResponse.json({ ok: true, points, alignmentScore });
 }

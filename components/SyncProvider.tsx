@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 
 // A tiny framework for optimistic actions with visible sync status.
 //
@@ -36,6 +36,7 @@ let _seq = 0;
 
 export function SyncProvider({ children }: { children: React.ReactNode }) {
   const [tasks, setTasks] = useState<SyncTask[]>([]);
+  const [outbox, setOutbox] = useState<{ pending: number; failed: number }>({ pending: 0, failed: 0 });
   const timers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   const clearTimer = (id: string) => {
@@ -74,10 +75,28 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
     await attempt();
   }, [scheduleAutoDismiss]);
 
+  // Jira writes are queued durably, so surface anything still unsynced or
+  // failed rather than letting perceived speed imply Jira actually has it.
+  useEffect(() => {
+    let alive = true;
+    const poll = () =>
+      fetch("/api/outbox/status")
+        .then((r) => r.json())
+        .then((d) => {
+          if (alive && typeof d?.pending === "number") {
+            setOutbox({ pending: d.pending, failed: d.failed ?? 0 });
+          }
+        })
+        .catch(() => {});
+    poll();
+    const t = setInterval(poll, 30_000);
+    return () => { alive = false; clearInterval(t); };
+  }, []);
+
   return (
     <SyncContext.Provider value={{ run, tasks, dismiss }}>
       {children}
-      <SyncIndicator tasks={tasks} dismiss={dismiss} />
+      <SyncIndicator tasks={tasks} dismiss={dismiss} outbox={outbox} />
     </SyncContext.Provider>
   );
 }
@@ -98,10 +117,34 @@ export function useSync() {
 
 // Bottom-right stack of active/failed syncs. Successes flash briefly; failures
 // stay with a Retry until dealt with.
-function SyncIndicator({ tasks, dismiss }: { tasks: SyncTask[]; dismiss: (id: string) => void }) {
-  if (tasks.length === 0) return null;
+function SyncIndicator({
+  tasks,
+  dismiss,
+  outbox,
+}: {
+  tasks: SyncTask[];
+  dismiss: (id: string) => void;
+  outbox: { pending: number; failed: number };
+}) {
+  if (tasks.length === 0 && outbox.pending === 0 && outbox.failed === 0) return null;
   return (
     <div className="fixed right-[18px] bottom-[18px] z-[70] flex flex-col gap-2 items-end">
+      {outbox.failed > 0 && (
+        <div className="flex items-center gap-[10px] pl-[12px] pr-[10px] py-[9px] border border-accent text-[12.5px] shadow-sm bg-white">
+          <span className="text-accent text-[12px]">⚠</span>
+          <span className="text-accent">
+            {outbox.failed} Jira {outbox.failed === 1 ? "write" : "writes"} failed
+          </span>
+        </div>
+      )}
+      {outbox.failed === 0 && outbox.pending > 0 && (
+        <div className="flex items-center gap-[10px] pl-[12px] pr-[10px] py-[9px] border border-border text-[12.5px] shadow-sm bg-white">
+          <span className="w-[7px] h-[7px] rounded-full bg-key/60 animate-pulse" />
+          <span className="text-muted2">
+            Syncing {outbox.pending} to Jira…
+          </span>
+        </div>
+      )}
       {tasks.map((t) => (
         <div
           key={t.id}

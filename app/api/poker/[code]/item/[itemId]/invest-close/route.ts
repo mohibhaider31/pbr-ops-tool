@@ -3,8 +3,7 @@ import { NextResponse } from "next/server";
 import { waitUntil } from "@vercel/functions";
 import { prisma } from "@/lib/prisma";
 import { getViewer } from "@/lib/viewer";
-import { getSession } from "@/lib/session";
-import { addJiraComment } from "@/lib/jira";
+import { enqueueOp, runPending } from "@/lib/outbox";
 import { pusher, pokerChannel, POKER_EVENTS } from "@/lib/pusher-server";
 
 // Organizer closes INVEST scoring. Score = average of each participant's 0-6
@@ -40,20 +39,16 @@ export async function POST(_req: Request, { params }: { params: { code: string; 
   // sent, so the user never waits on Atlassian's slow API (was ~2.5s).
   waitUntil(pusher().trigger(pokerChannel(params.code), POKER_EVENTS.investClosed, { itemId: item.id, investScore, scorers: n }).catch(() => {}));
 
-  waitUntil(
-    (async () => {
-      try {
-        const s = await getSession();
-        const auth = s ? { accessToken: s.accessToken, cloudId: s.cloudId } : undefined;
-        await addJiraComment(
-          item.jiraKey,
-          viewer.name,
-          `INVEST score (team average): ${investScore}/6, from ${n} scorer${n === 1 ? "" : "s"} in Planning Poker.`,
-          auth
-        );
-      } catch { /* non-fatal */ }
-    })()
-  );
+  await enqueueOp({
+    boardId: session.boardId,
+    type: "ADD_COMMENT",
+    jiraKey: item.jiraKey,
+    payload: {
+      author: viewer.name,
+      text: `INVEST score (team average): ${investScore}/6, from ${n} scorer${n === 1 ? "" : "s"} in Planning Poker.`,
+    },
+  });
+  waitUntil(runPending(5).then(() => {}).catch(() => {}));
 
   return NextResponse.json({ ok: true, investScore, scorers: n });
 }

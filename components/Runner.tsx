@@ -27,26 +27,34 @@ export default function Runner({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ONE request. The server owns the hop sequence now - this used to make a
+  // separate API call per status (each of which made 2 Jira requests), so a
+  // 4-status path cost 4 auth cycles and 8 Jira round-trips from the browser.
   const run = async () => {
-    for (let i = 0; i < path.length; i++) {
-      setStates((prev) => prev.map((s, idx) => (idx === i ? "active" : s)));
-      try {
-        const res = await fetch(`/api/stories/${jiraKey}/transition`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ to: path[i] }),
-        });
-        const data = await res.json();
-        if (data.error) throw new Error(data.error);
-        setStates((prev) => prev.map((s, idx) => (idx === i ? "done" : s)));
-      } catch (e: any) {
-        setStates((prev) => prev.map((s, idx) => (idx === i ? "error" : s)));
-        setErrorMsg(e.message);
+    setStates(path.map((_, i) => (i === 0 ? "active" : "pending")));
+    try {
+      const res = await fetch(`/api/stories/${jiraKey}/pbr-complete`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+
+      const completed: string[] = Array.isArray(data.completed) ? data.completed : [];
+      // Reflect exactly what Jira confirmed - never mark a hop done that isn't.
+      setStates(
+        path.map((step, i) => {
+          if (completed.includes(step)) return "done";
+          if (i === completed.length && (data.error || data.partial)) return "error";
+          return data.ok ? "done" : "pending";
+        })
+      );
+
+      if (!res.ok || data.error) {
+        setErrorMsg(data.error || "Transition failed");
         return;
       }
+      setFinished(true);
+    } catch (e: any) {
+      setStates((prev) => prev.map((s, i) => (i === 0 ? "error" : s)));
+      setErrorMsg(e.message || "Transition failed");
     }
-    await fetch(`/api/stories/${jiraKey}/complete`, { method: "POST" });
-    setFinished(true);
   };
 
   return (

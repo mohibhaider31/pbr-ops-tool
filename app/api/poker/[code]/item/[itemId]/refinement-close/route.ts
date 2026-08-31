@@ -3,9 +3,8 @@ import { NextResponse } from "next/server";
 import { waitUntil } from "@vercel/functions";
 import { prisma } from "@/lib/prisma";
 import { getViewer } from "@/lib/viewer";
-import { getSession } from "@/lib/session";
 import { getCurrentBoard } from "@/lib/board";
-import { addJiraComment } from "@/lib/jira";
+import { enqueueOp, runPending } from "@/lib/outbox";
 import { pusher, pokerChannel, POKER_EVENTS } from "@/lib/pusher-server";
 
 // Organizer closes the refinement poll. Tally: if >50% of votes say "needs
@@ -53,20 +52,18 @@ export async function POST(_req: Request, { params }: { params: { code: string; 
     data: { refinementPollOpen: false, rediscussionScore, investPollOpen: true },
   });
 
-  // Jira note runs in the background so the close is instant.
+  // Durable Jira note via the outbox.
   if (majorityNeedsWork) {
-    waitUntil((async () => {
-      try {
-        const s = await getSession();
-        const auth = s ? { accessToken: s.accessToken, cloudId: s.cloudId } : undefined;
-        await addJiraComment(
-          item.jiraKey,
-          viewer.name,
-          `Team flagged this story as still needing refinement (${yes}/${total} in Planning Poker). Re-discussion score: ${rediscussionScore}/5.`,
-          auth
-        );
-      } catch { /* non-fatal */ }
-    })());
+    await enqueueOp({
+      boardId,
+      type: "ADD_COMMENT",
+      jiraKey: item.jiraKey,
+      payload: {
+        author: viewer.name,
+        text: `Team flagged this story as still needing refinement (${yes}/${total} in Planning Poker). Re-discussion score: ${rediscussionScore}/5.`,
+      },
+    });
+    waitUntil(runPending(5).then(() => {}).catch(() => {}));
   }
 
   waitUntil(pusher().trigger(pokerChannel(params.code), POKER_EVENTS.refinementClosed, {

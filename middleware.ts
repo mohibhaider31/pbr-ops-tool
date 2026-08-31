@@ -14,6 +14,8 @@ const PUBLIC_PATHS = [
   "/api/auth/callback",
   "/api/auth/logout",
   "/api/poker/guest/join",
+  // Scheduled outbox worker - authenticates with CRON_SECRET in the route.
+  "/api/outbox/run",
 ];
 
 export function middleware(req: NextRequest) {
