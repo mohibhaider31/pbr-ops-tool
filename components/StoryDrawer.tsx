@@ -156,7 +156,7 @@ export default function StoryDrawer({
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                       assignees: [
-                        ...story.assignees.map((a) => ({ name: a.name, email: a.email, accountId: (a as any).accountId ?? null })),
+                        ...(story.assignees ?? []).map((a) => ({ name: a.name, email: a.email, accountId: (a as any).accountId ?? null })),
                         ...people,
                       ],
                     }),
@@ -218,7 +218,7 @@ export default function StoryDrawer({
             <span className="font-mono text-[9.5px] tracking-[.11em] text-muted2">
               QUESTIONS &amp; NOTES
             </span>
-            {story.comments.map((c) => (
+            {(story.comments ?? []).map((c) => (
               <div key={c.id} className="flex flex-col gap-[5px] pb-[13px] border-b border-borderFaint">
                 <div className="flex items-center gap-2">
                   <span
@@ -233,7 +233,7 @@ export default function StoryDrawer({
                 <p className="m-0 text-[13px] leading-[1.55] text-[#3A362F]">{c.text}</p>
               </div>
             ))}
-            {story.comments.length === 0 && (
+            {(story.comments ?? []).length === 0 && (
               <span className="text-[12px] text-muted3">No comments yet</span>
             )}
 

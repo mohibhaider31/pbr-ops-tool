@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
-import type { Story } from "@/lib/types";
+import type { Story, StoryListItem } from "@/lib/types";
 import { STAGE_META } from "@/lib/stage";
 import { avatarColor, initials } from "@/lib/avatar";
 import StoryDrawer from "./StoryDrawer";
@@ -14,7 +14,7 @@ type Filter = "all" | "unassigned" | "assigned" | "in_review" | "questions" | "d
 export default function BacklogBoard() {
   const { can } = useViewer();
   const { run } = useSync();
-  const [stories, setStories] = useState<Story[] | null>(null);
+  const [stories, setStories] = useState<StoryListItem[] | null>(null);
   const [statuses, setStatuses] = useState<string[]>([]);
   const [statusFilter, setStatusFilter] = useState<Set<string>>(new Set());
   const [sortBy, setSortBy] = useState<"priority" | "summary" | "status" | "key" | "points">("priority");
@@ -74,7 +74,7 @@ export default function BacklogBoard() {
         list = list.filter((s) => s.stage === "IN_REVIEW");
         break;
       case "questions":
-        list = list.filter((s) => s.comments.some((c) => c.isQuestion));
+        list = list.filter((s) => ((s as any).questionCount ?? 0) > 0);
         break;
       case "done":
         list = list.filter((s) => s.stage === "PBR_DONE");
@@ -123,7 +123,7 @@ export default function BacklogBoard() {
       { key: "unassigned", label: "Unassigned", count: all.filter((s) => s.assignees.length === 0).length },
       { key: "assigned", label: "Assigned", count: all.filter((s) => s.assignees.length > 0 && s.stage !== "PBR_DONE").length },
       { key: "in_review", label: "Ready for PBR", count: all.filter((s) => s.stage === "IN_REVIEW").length },
-      { key: "questions", label: "Has questions", count: all.filter((s) => s.comments.some((c) => c.isQuestion)).length },
+      { key: "questions", label: "Has questions", count: all.filter((s) => ((s as any).questionCount ?? 0) > 0).length },
     ];
   }, [stories]);
 

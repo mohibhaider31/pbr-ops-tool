@@ -26,6 +26,8 @@ export type JiraFields = {
   assignee: string | null;
 };
 
+// Full story, as returned by the DETAIL endpoint (/api/stories/:key) and used
+// by the drawer.
 export type Story = {
   id: string;
   jiraKey: string;
@@ -33,5 +35,19 @@ export type Story = {
   stage: StoryStage;
   assignees: Assignee[];
   comments: Comment[];
+  jira: JiraFields;
+};
+
+// Backlog LIST projection. Deliberately omits comment bodies - the table only
+// needs counts, and shipping every comment for every story was a large payload
+// the UI never rendered.
+export type StoryListItem = {
+  id: string;
+  jiraKey: string;
+  priorityOrder: number;
+  stage: StoryStage;
+  assignees: Assignee[];
+  commentCount: number;
+  questionCount: number;
   jira: JiraFields;
 };
