@@ -21,6 +21,12 @@ function initialsOf(name: string) {
 
 export default function Sidebar() {
   const pathname = usePathname();
+  // The route the user just clicked. Set immediately on click so the nav item
+  // reacts before any server work happens - previously a cold start meant the
+  // click produced no visible response at all and felt like it hadn't
+  // registered. Cleared once the pathname actually changes.
+  const [navigatingTo, setNavigatingTo] = useState<string | null>(null);
+  useEffect(() => { setNavigatingTo(null); }, [pathname]);
   const [user, setUser] = useState<{ name: string; email: string | null; role?: string; isAdmin?: boolean; boardId?: string | null; boardName?: string | null } | null>(null);
   const [boards, setBoards] = useState<{ id: string; name: string; jiraProjectKey: string }[]>([]);
   const [boardMenuOpen, setBoardMenuOpen] = useState(false);
@@ -105,23 +111,32 @@ export default function Sidebar() {
         <nav className="flex flex-col gap-[2px]">
           {NAV.filter((item) => (!item.adminOnly && item.label !== "Settings") || user?.isAdmin).map((item) => {
             const active = item.href === pathname;
+            const pending = navigatingTo === item.href && !active;
             return (
               <Link
                 key={item.label}
                 href={item.soon ? "#" : item.href}
-                onClick={(e) => item.soon && e.preventDefault()}
+                onClick={(e) => {
+                  if (item.soon) { e.preventDefault(); return; }
+                  if (item.href !== pathname) setNavigatingTo(item.href);
+                }}
                 className={`relative flex items-center gap-2 px-[18px] py-[9px] text-[13px] font-medium tracking-[.01em] transition-colors ${
                   item.soon
                     ? "text-railMuted2 cursor-default"
-                    : active
+                    : active || pending
                     ? "text-railText"
                     : "text-railMuted hover:text-railText"
                 }`}
               >
-                {active && !item.soon && (
-                  <span className="absolute left-0 top-1 bottom-1 w-[2px] bg-accent" />
+                {(active || pending) && !item.soon && (
+                  <span
+                    className={`absolute left-0 top-1 bottom-1 w-[2px] bg-accent ${pending ? "animate-pulse" : ""}`}
+                  />
                 )}
                 {item.label}
+                {pending && (
+                  <span className="ml-auto w-[5px] h-[5px] rounded-full bg-accent/70 animate-pulse" />
+                )}
                 {item.soon && (
                   <span className="ml-auto font-mono text-[8.5px] tracking-[.08em] text-railMuted3 border border-railBorder px-[5px] py-[1px]">
                     SOON
