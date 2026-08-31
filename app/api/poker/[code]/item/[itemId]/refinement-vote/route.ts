@@ -15,7 +15,11 @@ export async function POST(req: Request, { params }: { params: { code: string; i
   const { needsWork }: { needsWork: boolean } = await req.json();
   if (typeof needsWork !== "boolean") return NextResponse.json({ error: "invalid" }, { status: 400 });
 
-  const item = await prisma.pokerItem.findUnique({ where: { id: params.itemId } });
+  // Item + existing poll votes in one query.
+  const item = await prisma.pokerItem.findUnique({
+    where: { id: params.itemId },
+    include: { refinementVotes: true },
+  });
   if (!item) return NextResponse.json({ error: "not_found" }, { status: 404 });
   if (!item.refinementPollOpen) return NextResponse.json({ error: "poll closed" }, { status: 409 });
 
@@ -24,10 +28,10 @@ export async function POST(req: Request, { params }: { params: { code: string; i
     create: { itemId: item.id, voterId: me.voterId, voterName: me.name, needsWork },
     update: { needsWork },
   });
-  const votes = await prisma.refinementVote.findMany({
-    where: { itemId: item.id },
-    select: { needsWork: true },
-  });
+  // Derive the tally in memory - we already have the prior votes and know
+  // what just changed.
+  const others = item.refinementVotes.filter((v) => v.voterId !== me.voterId);
+  const votes = [...others.map((v) => ({ needsWork: v.needsWork })), { needsWork }];
   waitUntil(
     pusher()
       .trigger(pokerChannel(params.code), POKER_EVENTS.refinementUpdate, {

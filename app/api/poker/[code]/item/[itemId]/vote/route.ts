@@ -16,14 +16,16 @@ export async function POST(req: Request, { params }: { params: { code: string; i
   const { card }: { card: string } = await req.json();
   if (!DECK.includes(card)) return NextResponse.json({ error: "invalid card" }, { status: 400 });
 
-  const item = await prisma.pokerItem.findUnique({ where: { id: params.itemId } });
+  // One query for the item, its session (to verify the guest is voting in the
+  // session their cookie is bound to) and the existing votes. Previously this
+  // was three separate sequential round-trips.
+  const item = await prisma.pokerItem.findUnique({
+    where: { id: params.itemId },
+    include: { session: true, votes: true },
+  });
   if (!item) return NextResponse.json({ error: "not_found" }, { status: 404 });
   if (item.state !== "VOTING") return NextResponse.json({ error: "voting closed" }, { status: 409 });
-
-  // Ensure this item belongs to the session the participant is in (guests are
-  // bound to one code; this stops a guest cookie voting on another session).
-  const session = await prisma.pokerSession.findUnique({ where: { id: item.sessionId } });
-  if (!session || session.code !== params.code)
+  if (item.session.code !== params.code)
     return NextResponse.json({ error: "wrong session" }, { status: 403 });
 
   await prisma.pokerVote.upsert({
@@ -32,26 +34,23 @@ export async function POST(req: Request, { params }: { params: { code: string; i
     update: { card },
   });
 
-  // Broadcast a DELTA, not a "go refetch everything" ping. Clients apply this
-  // to local state, so a vote no longer causes every browser in the session to
-  // re-download the whole session.
-  //
-  // Deliberately does NOT include the card value: votes stay hidden until the
-  // organizer reveals, and anything on this channel is visible to every
-  // participant.
-  const roundVotes = await prisma.pokerVote.findMany({
-    where: { itemId: item.id, round: item.round },
-    select: { voterId: true, voterName: true },
-  });
+  // Derive the new voter roster in memory rather than re-querying: we already
+  // have this round's votes, and we know exactly what just changed.
+  const roster = item.votes
+    .filter((v) => v.round === item.round && v.voterId !== me.voterId)
+    .map((v) => ({ voterId: v.voterId, voterName: v.voterName }));
+  roster.push({ voterId: me.voterId, voterName: me.name });
 
-  // Fire-and-forget the broadcast: the voter shouldn't wait on Pusher's API.
+  // Broadcast a DELTA, off the response path. Deliberately excludes the card
+  // value: votes stay hidden until reveal, and this channel is visible to
+  // every participant.
   waitUntil(
     pusher()
       .trigger(pokerChannel(params.code), POKER_EVENTS.voteUpdate, {
         itemId: item.id,
         round: item.round,
-        voters: roundVotes,
-        votedCount: roundVotes.length,
+        voters: roster,
+        votedCount: roster.length,
       })
       .catch(() => {})
   );

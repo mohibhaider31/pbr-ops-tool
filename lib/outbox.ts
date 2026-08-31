@@ -40,6 +40,23 @@ export function enqueueOp(job: {
   });
 }
 
+/**
+ * Enqueue several jobs as ONE statement. Prefer this over N enqueueOp() calls
+ * inside a transaction - it's a single round-trip rather than one per job.
+ */
+export function enqueueManyOp(
+  jobs: { boardId: string; type: OutboxType; jiraKey: string; payload: Record<string, unknown> }[]
+) {
+  return prisma.outboxJob.createMany({
+    data: jobs.map((j) => ({
+      boardId: j.boardId,
+      type: j.type,
+      jiraKey: j.jiraKey,
+      payload: j.payload as any,
+    })),
+  });
+}
+
 /** Fire-and-forget enqueue when there's no surrounding transaction. */
 export async function enqueue(job: {
   boardId: string;
