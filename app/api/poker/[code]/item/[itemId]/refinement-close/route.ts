@@ -69,10 +69,10 @@ export async function POST(_req: Request, { params }: { params: { code: string; 
     })());
   }
 
-  await pusher().trigger(pokerChannel(params.code), POKER_EVENTS.refinementClosed, {
+  waitUntil(pusher().trigger(pokerChannel(params.code), POKER_EVENTS.refinementClosed, {
     itemId: item.id, rediscussionScore, flagged: majorityNeedsWork, yes, total,
-  });
+  }).catch(() => {}));
   // Chain straight into INVEST scoring.
-  await pusher().trigger(pokerChannel(params.code), POKER_EVENTS.investOpen, { itemId: item.id, jiraKey: item.jiraKey });
+  waitUntil(pusher().trigger(pokerChannel(params.code), POKER_EVENTS.investOpen, { itemId: item.id, jiraKey: item.jiraKey }).catch(() => {}));
   return NextResponse.json({ ok: true, rediscussionScore, flagged: majorityNeedsWork, yes, total });
 }

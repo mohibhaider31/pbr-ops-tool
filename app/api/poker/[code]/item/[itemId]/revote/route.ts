@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
+import { waitUntil } from "@vercel/functions";
 import { prisma } from "@/lib/prisma";
 import { getViewer } from "@/lib/viewer";
 import { pusher, pokerChannel, POKER_EVENTS } from "@/lib/pusher-server";
@@ -12,10 +13,11 @@ export async function POST(_req: Request, { params }: { params: { code: string; 
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   const item = await prisma.pokerItem.findUnique({ where: { id: params.itemId } });
   if (!item) return NextResponse.json({ error: "not_found" }, { status: 404 });
-  await prisma.pokerItem.update({
+  // Capture the NEW round from the update result - item.round is the old value.
+  const updated = await prisma.pokerItem.update({
     where: { id: item.id },
     data: { state: "VOTING", round: item.round + 1 },
   });
-  await pusher().trigger(pokerChannel(params.code), POKER_EVENTS.reVote, { itemId: item.id });
+  waitUntil(pusher().trigger(pokerChannel(params.code), POKER_EVENTS.reVote, { itemId: item.id, round: updated.round }).catch(() => {}));
   return NextResponse.json({ ok: true });
 }

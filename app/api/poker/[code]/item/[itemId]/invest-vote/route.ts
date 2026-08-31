@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
+import { waitUntil } from "@vercel/functions";
 import { prisma } from "@/lib/prisma";
 import { getParticipant } from "@/lib/pokerParticipant";
 import { pusher, pokerChannel, POKER_EVENTS } from "@/lib/pusher-server";
@@ -31,6 +32,24 @@ export async function POST(req: Request, { params }: { params: { code: string; i
     create: { itemId: item.id, voterId: me.voterId, voterName: me.name, ...scores },
     update: scores,
   });
-  await pusher().trigger(pokerChannel(params.code), POKER_EVENTS.investUpdate, { itemId: item.id });
+  // The INVEST results panel updates live, so the delta carries the rollup.
+  const all = await prisma.investVote.findMany({ where: { itemId: item.id } });
+  const rollup = [
+    { key: "independent", ones: all.filter((v) => v.independent).length },
+    { key: "negotiable", ones: all.filter((v) => v.negotiable).length },
+    { key: "valuable", ones: all.filter((v) => v.valuable).length },
+    { key: "estimable", ones: all.filter((v) => v.estimable).length },
+    { key: "small", ones: all.filter((v) => v.small).length },
+    { key: "testable", ones: all.filter((v) => v.testable).length },
+  ];
+  waitUntil(
+    pusher()
+      .trigger(pokerChannel(params.code), POKER_EVENTS.investUpdate, {
+        itemId: item.id,
+        submitted: all.length,
+        rollup,
+      })
+      .catch(() => {})
+  );
   return NextResponse.json({ ok: true });
 }

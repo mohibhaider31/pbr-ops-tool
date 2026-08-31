@@ -38,7 +38,7 @@ export async function POST(_req: Request, { params }: { params: { code: string; 
   // Broadcast the closed state and respond immediately. The Jira comment runs
   // in the background via waitUntil — reliably completes after the response is
   // sent, so the user never waits on Atlassian's slow API (was ~2.5s).
-  await pusher().trigger(pokerChannel(params.code), POKER_EVENTS.investClosed, { itemId: item.id, investScore, scorers: n });
+  waitUntil(pusher().trigger(pokerChannel(params.code), POKER_EVENTS.investClosed, { itemId: item.id, investScore, scorers: n }).catch(() => {}));
 
   waitUntil(
     (async () => {

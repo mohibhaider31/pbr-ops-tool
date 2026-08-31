@@ -44,11 +44,56 @@ export default function GuestPokerRoom({ code, name }: { code: string; name: str
     load();
     return () => { if (reloadTimer.current) clearTimeout(reloadTimer.current); };
   }, [load]);
+  // Same delta model as the organizer room - guests apply state locally rather
+  // than refetching the whole session on every event.
+  const applyIfCurrent = useCallback((itemId: string, fn: (cur: any) => any) => {
+    setState((p: any) => {
+      if (!p?.current || p.current.itemId !== itemId) return p;
+      return { ...p, current: fn(p.current) };
+    });
+  }, []);
+
   usePokerChannel(code, {
-    "vote-update": () => debouncedLoad(), "revealed": () => debouncedLoad(), "re-vote": () => debouncedLoad(),
+    "vote-update": (d: any) => {
+      if (!d?.itemId || !Array.isArray(d.voters)) return debouncedLoad();
+      applyIfCurrent(d.itemId, (cur) => ({
+        ...cur,
+        participants: d.voters.map((v: any) => {
+          const existing = (cur.participants || []).find((p: any) => p.voterId === v.voterId);
+          return { voterId: v.voterId, voterName: v.voterName, voted: true, card: existing?.card ?? null };
+        }),
+      }));
+    },
+    "revealed": (d: any) => {
+      if (!d?.itemId || !d.analysis) return debouncedLoad();
+      applyIfCurrent(d.itemId, (cur) => ({
+        ...cur, state: "REVEALED",
+        participants: d.participants ?? cur.participants,
+        analysis: d.analysis,
+      }));
+    },
+    "re-vote": (d: any) => {
+      if (!d?.itemId) return debouncedLoad();
+      applyIfCurrent(d.itemId, (cur) => ({
+        ...cur, state: "VOTING", round: d.round ?? cur.round + 1,
+        participants: [], analysis: null, myVote: null,
+      }));
+    },
+    "refinement-update": (d: any) => {
+      if (!d?.itemId || typeof d.voted !== "number") return debouncedLoad();
+      applyIfCurrent(d.itemId, (cur) => ({
+        ...cur, refinement: { ...cur.refinement, voted: d.voted, yes: d.yes ?? cur.refinement.yes },
+      }));
+    },
+    "invest-update": (d: any) => {
+      if (!d?.itemId || typeof d.submitted !== "number") return debouncedLoad();
+      applyIfCurrent(d.itemId, (cur) => ({
+        ...cur, invest: { ...cur.invest, submitted: d.submitted, rollup: d.rollup ?? cur.invest.rollup },
+      }));
+    },
     "accepted": () => debouncedLoad(), "queue-update": () => debouncedLoad(), "navigate": () => debouncedLoad(),
-    "refinement-open": () => debouncedLoad(), "refinement-update": () => debouncedLoad(), "refinement-closed": () => debouncedLoad(),
-    "invest-open": () => debouncedLoad(), "invest-update": () => debouncedLoad(), "invest-closed": () => debouncedLoad(),
+    "refinement-open": () => debouncedLoad(), "refinement-closed": () => debouncedLoad(),
+    "invest-open": () => debouncedLoad(), "invest-closed": () => debouncedLoad(),
   });
 
   const cur = state?.current;

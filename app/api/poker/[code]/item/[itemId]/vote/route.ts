@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
+import { waitUntil } from "@vercel/functions";
 import { prisma } from "@/lib/prisma";
 import { getParticipant } from "@/lib/pokerParticipant";
 import { DECK } from "@/lib/poker";
@@ -30,6 +31,30 @@ export async function POST(req: Request, { params }: { params: { code: string; i
     create: { itemId: item.id, round: item.round, voterId: me.voterId, voterName: me.name, card },
     update: { card },
   });
-  await pusher().trigger(pokerChannel(params.code), POKER_EVENTS.voteUpdate, { itemId: item.id });
+
+  // Broadcast a DELTA, not a "go refetch everything" ping. Clients apply this
+  // to local state, so a vote no longer causes every browser in the session to
+  // re-download the whole session.
+  //
+  // Deliberately does NOT include the card value: votes stay hidden until the
+  // organizer reveals, and anything on this channel is visible to every
+  // participant.
+  const roundVotes = await prisma.pokerVote.findMany({
+    where: { itemId: item.id, round: item.round },
+    select: { voterId: true, voterName: true },
+  });
+
+  // Fire-and-forget the broadcast: the voter shouldn't wait on Pusher's API.
+  waitUntil(
+    pusher()
+      .trigger(pokerChannel(params.code), POKER_EVENTS.voteUpdate, {
+        itemId: item.id,
+        round: item.round,
+        voters: roundVotes,
+        votedCount: roundVotes.length,
+      })
+      .catch(() => {})
+  );
+
   return NextResponse.json({ ok: true });
 }

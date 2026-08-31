@@ -67,20 +67,91 @@ export default function PokerRoom({ code }: { code: string }) {
     return () => { if (reloadTimer.current) clearTimeout(reloadTimer.current); };
   }, [load]);
 
+  // Realtime events now carry state DELTAS, applied locally. Previously every
+  // event was a bare {itemId} ping and every client responded by re-downloading
+  // the entire session (all items, all votes, all refinement + INVEST votes).
+  // In a 6-person / 8-story session that was ~634 full refetches.
+  //
+  // High-frequency events (votes) are pure local applies - no network at all.
+  // Structural changes (queue edits, navigation) still refetch, since the shape
+  // of the session genuinely changed and those happen once per story.
+  const applyIfCurrent = useCallback(
+    (itemId: string, fn: (cur: Current) => Current) => {
+      setS((p) => {
+        if (!p?.current || p.current.itemId !== itemId) return p;
+        return { ...p, current: fn(p.current) };
+      });
+    },
+    []
+  );
+
   usePokerChannel(code, {
-    // Vote updates are high-frequency → debounced. State-change events refresh
-    // promptly (still via debounce, which collapses duplicates harmlessly).
-    "vote-update": () => debouncedLoad(),
-    "revealed": () => debouncedLoad(),
-    "re-vote": () => debouncedLoad(),
+    // Someone voted. Payload carries who voted and the count - never the card
+    // value, which stays hidden until reveal.
+    "vote-update": (d: any) => {
+      if (!d?.itemId || !Array.isArray(d.voters)) return debouncedLoad();
+      applyIfCurrent(d.itemId, (cur) => ({
+        ...cur,
+        participants: d.voters.map((v: any) => {
+          const existing = cur.participants.find((p) => p.voterId === v.voterId);
+          return {
+            voterId: v.voterId,
+            voterName: v.voterName,
+            voted: true,
+            // Keep my own card visible to me; everyone else stays face-down.
+            card: existing?.card ?? null,
+          };
+        }),
+      }));
+    },
+
+    // Cards are public now: the payload has the votes and the analysis.
+    "revealed": (d: any) => {
+      if (!d?.itemId || !d.analysis) return debouncedLoad();
+      applyIfCurrent(d.itemId, (cur) => ({
+        ...cur,
+        state: "REVEALED",
+        participants: d.participants ?? cur.participants,
+        analysis: d.analysis,
+      }));
+    },
+
+    // New round: clear the table locally.
+    "re-vote": (d: any) => {
+      if (!d?.itemId) return debouncedLoad();
+      applyIfCurrent(d.itemId, (cur) => ({
+        ...cur,
+        state: "VOTING",
+        round: (d.round ?? cur.round + 1),
+        participants: [],
+        analysis: null,
+        myVote: null,
+      }));
+    },
+
+    "refinement-update": (d: any) => {
+      if (!d?.itemId || typeof d.voted !== "number") return debouncedLoad();
+      applyIfCurrent(d.itemId, (cur) => ({
+        ...cur,
+        refinement: { ...cur.refinement, voted: d.voted, yes: d.yes ?? cur.refinement.yes },
+      }));
+    },
+
+    "invest-update": (d: any) => {
+      if (!d?.itemId || typeof d.submitted !== "number") return debouncedLoad();
+      applyIfCurrent(d.itemId, (cur) => ({
+        ...cur,
+        invest: { ...cur.invest, submitted: d.submitted, rollup: d.rollup ?? cur.invest.rollup },
+      }));
+    },
+
+    // Structural / once-per-story transitions: a refetch is appropriate.
     "accepted": () => debouncedLoad(),
     "queue-update": () => debouncedLoad(),
     "navigate": () => debouncedLoad(),
     "refinement-open": () => debouncedLoad(),
-    "refinement-update": () => debouncedLoad(),
     "refinement-closed": () => debouncedLoad(),
     "invest-open": () => debouncedLoad(),
-    "invest-update": () => debouncedLoad(),
     "invest-closed": () => debouncedLoad(),
   });
 

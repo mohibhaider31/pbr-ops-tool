@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
+import { waitUntil } from "@vercel/functions";
 import { prisma } from "@/lib/prisma";
 import { getParticipant } from "@/lib/pokerParticipant";
 import { pusher, pokerChannel, POKER_EVENTS } from "@/lib/pusher-server";
@@ -23,6 +24,18 @@ export async function POST(req: Request, { params }: { params: { code: string; i
     create: { itemId: item.id, voterId: me.voterId, voterName: me.name, needsWork },
     update: { needsWork },
   });
-  await pusher().trigger(pokerChannel(params.code), POKER_EVENTS.refinementUpdate, { itemId: item.id });
+  const votes = await prisma.refinementVote.findMany({
+    where: { itemId: item.id },
+    select: { needsWork: true },
+  });
+  waitUntil(
+    pusher()
+      .trigger(pokerChannel(params.code), POKER_EVENTS.refinementUpdate, {
+        itemId: item.id,
+        voted: votes.length,
+        yes: votes.filter((v) => v.needsWork).length,
+      })
+      .catch(() => {})
+  );
   return NextResponse.json({ ok: true });
 }

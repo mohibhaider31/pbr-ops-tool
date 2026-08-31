@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
+import { waitUntil } from "@vercel/functions";
 import { prisma } from "@/lib/prisma";
 import { getViewer } from "@/lib/viewer";
 import { pusher, pokerChannel, POKER_EVENTS } from "@/lib/pusher-server";
@@ -42,6 +43,6 @@ export async function POST(req: Request, { params }: { params: { code: string } 
     });
   }
 
-  await pusher().trigger(pokerChannel(session.code), POKER_EVENTS.queueUpdate, {});
+  waitUntil(pusher().trigger(pokerChannel(session.code), POKER_EVENTS.queueUpdate, {}).catch(() => {}));
   return NextResponse.json({ ok: true, added: created.length });
 }

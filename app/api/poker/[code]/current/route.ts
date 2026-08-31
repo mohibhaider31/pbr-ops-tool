@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
+import { waitUntil } from "@vercel/functions";
 import { prisma } from "@/lib/prisma";
 import { getViewer } from "@/lib/viewer";
 import { pusher, pokerChannel, POKER_EVENTS } from "@/lib/pusher-server";
@@ -18,6 +19,6 @@ export async function POST(req: Request, { params }: { params: { code: string } 
   if (!item) return NextResponse.json({ error: "item not in session" }, { status: 404 });
 
   await prisma.pokerSession.update({ where: { id: session.id }, data: { currentItemId: itemId } });
-  await pusher().trigger(pokerChannel(session.code), POKER_EVENTS.navigate, { itemId });
+  waitUntil(pusher().trigger(pokerChannel(session.code), POKER_EVENTS.navigate, { itemId }).catch(() => {}));
   return NextResponse.json({ ok: true });
 }

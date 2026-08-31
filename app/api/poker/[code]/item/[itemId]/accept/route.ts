@@ -34,8 +34,8 @@ export async function POST(req: Request, { params }: { params: { code: string; i
     where: { id: item.id },
     data: { finalPoints: points, alignmentScore: alignmentScore ?? undefined, status: "DONE", refinementPollOpen: true },
   });
-  await pusher().trigger(pokerChannel(params.code), POKER_EVENTS.accepted, { itemId: item.id, points, alignmentScore });
-  await pusher().trigger(pokerChannel(params.code), POKER_EVENTS.refinementOpen, { itemId: item.id, jiraKey: item.jiraKey });
+  waitUntil(pusher().trigger(pokerChannel(params.code), POKER_EVENTS.accepted, { itemId: item.id, points, alignmentScore }).catch(() => {}));
+  waitUntil(pusher().trigger(pokerChannel(params.code), POKER_EVENTS.refinementOpen, { itemId: item.id, jiraKey: item.jiraKey }).catch(() => {}));
 
   waitUntil(
     (async () => {
