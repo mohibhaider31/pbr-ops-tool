@@ -61,55 +61,34 @@ export async function syncBoardIssues(
     const issues = await fetchAllStories({ projectKey }, auth);
 
     if (issues.length > 0) {
-      // Bulk upsert in chunks. Parameterised via Prisma.sql to stay injection-safe.
-      const CHUNK = 200;
-      for (let i = 0; i < issues.length; i += CHUNK) {
-        const slice = issues.slice(i, i + CHUNK);
-        const values = slice
-          .map(
-            (_, n) =>
-              `($${n * 11 + 1}, $${n * 11 + 2}, $${n * 11 + 3}, $${n * 11 + 4}, $${n * 11 + 5}, $${n * 11 + 6}, $${n * 11 + 7}, $${n * 11 + 8}, $${n * 11 + 9}, $${n * 11 + 10}, $${n * 11 + 11}, NOW())`
-          )
-          .join(", ");
-        const params: any[] = [];
-        for (const it of slice) {
-          params.push(
-            `${boardId}:${it.key}`, // deterministic id so re-syncs don't churn rows
+      // Replace the board's projection atomically. Two statements inside one
+      // transaction (a DELETE and a single multi-row INSERT) rather than a
+      // raw ON CONFLICT upsert - Prisma handles the text[]/float typing
+      // correctly, and readers see either the old snapshot or the new one,
+      // never a partial state.
+      await prisma.$transaction([
+        prisma.jiraIssue.deleteMany({ where: { boardId } }),
+        prisma.jiraIssue.createMany({
+          data: issues.map((it) => ({
             boardId,
-            it.key,
-            it.summary ?? it.key,
-            it.status ?? "Unknown",
-            it.statusCategory ?? null,
-            it.issueType ?? null,
-            it.storyPoints ?? null,
-            it.assigneeAccountId ?? null,
-            it.assignee ?? null,
-            it.labels ?? []
-          );
-        }
-        await prisma.$executeRawUnsafe(
-          `INSERT INTO "JiraIssue"
-             ("id","boardId","jiraKey","summary","status","statusCategory","issueType","storyPoints","assigneeAccountId","assigneeName","labels","syncedAt")
-           VALUES ${values}
-           ON CONFLICT ("boardId","jiraKey") DO UPDATE SET
-             "summary" = EXCLUDED."summary",
-             "status" = EXCLUDED."status",
-             "statusCategory" = EXCLUDED."statusCategory",
-             "issueType" = EXCLUDED."issueType",
-             "storyPoints" = EXCLUDED."storyPoints",
-             "assigneeAccountId" = EXCLUDED."assigneeAccountId",
-             "assigneeName" = EXCLUDED."assigneeName",
-             "labels" = EXCLUDED."labels",
-             "syncedAt" = NOW()`,
-          ...params
-        );
-      }
-
-      // Drop projection rows for issues that no longer exist in Jira.
-      const liveKeys = issues.map((i) => i.key);
-      await prisma.jiraIssue.deleteMany({
-        where: { boardId, jiraKey: { notIn: liveKeys } },
-      });
+            jiraKey: it.key,
+            summary: it.summary ?? it.key,
+            status: it.status ?? "Unknown",
+            statusCategory: it.statusCategory ?? null,
+            issueType: it.issueType ?? null,
+            storyPoints:
+              typeof it.storyPoints === "number"
+                ? it.storyPoints
+                : it.storyPoints != null
+                  ? Number(it.storyPoints) || null
+                  : null,
+            assigneeAccountId: it.assigneeAccountId ?? null,
+            assigneeName: it.assignee ?? null,
+            labels: it.labels ?? [],
+          })),
+          skipDuplicates: true,
+        }),
+      ]);
     }
 
     await prisma.jiraSyncState.update({
