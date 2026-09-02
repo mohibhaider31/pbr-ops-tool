@@ -5,6 +5,7 @@ import { avatarColor, initials } from "@/lib/avatar";
 import { ROLE_LABEL, type BoardRole } from "@/lib/permissions";
 import { useViewer } from "@/lib/useViewer";
 import Toast from "./Toast";
+import InvitePanel from "./InvitePanel";
 
 type Person = {
   id: string;
@@ -200,6 +201,10 @@ export default function PeopleSettings() {
           </button>
         </div>
       )}
+
+      <div className="px-[30px] py-3 border-b border-borderLight">
+        <InvitePanel />
+      </div>
 
       <div className="flex-1 overflow-y-auto">
         {!people ? (
