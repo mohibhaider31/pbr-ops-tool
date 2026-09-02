@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getViewer } from "@/lib/viewer";
-import { getSession } from "@/lib/session";
+import { getSession, getJiraAuth } from "@/lib/session";
 import { getCurrentBoard } from "@/lib/board";
 import { fetchProjectMembers } from "@/lib/jira";
 
@@ -16,7 +16,7 @@ export async function POST() {
 
   try {
     const session = await getSession();
-    const auth = session ? { accessToken: session.accessToken, cloudId: session.cloudId } : undefined;
+    const auth = await getJiraAuth();
     const members = await fetchProjectMembers(auth, { projectKey: board.jiraProjectKey });
 
     let added = 0;

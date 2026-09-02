@@ -14,6 +14,10 @@ const PUBLIC_PATHS = [
   "/api/auth/callback",
   "/api/auth/logout",
   "/api/poker/guest/join",
+  // Local (stakeholder) auth: the invite token in the URL is the authorisation.
+  "/accept-invite",
+  "/api/auth/local/login",
+  "/api/auth/local/accept-invite",
   // Scheduled outbox worker - authenticates with CRON_SECRET in the route.
   "/api/outbox/run",
 ];

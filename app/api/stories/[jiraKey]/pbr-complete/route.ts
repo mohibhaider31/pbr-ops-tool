@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireCap } from "@/lib/guard";
 import { getCurrentBoard } from "@/lib/board";
-import { getSession } from "@/lib/session";
+import { getJiraAuth } from "@/lib/session";
 import { transitionIssue } from "@/lib/jira";
 
 // Server-owned PBR completion.
@@ -33,10 +33,7 @@ export async function POST(
   });
   if (!story) return NextResponse.json({ error: "Story not found" }, { status: 404 });
 
-  const session = await getSession();
-  const auth = session
-    ? { accessToken: session.accessToken, cloudId: session.cloudId }
-    : undefined;
+  const auth = await getJiraAuth();
 
   const path = [...board.pbrDonePath];
   const completed: string[] = [];

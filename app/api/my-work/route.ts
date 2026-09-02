@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getViewer } from "@/lib/viewer";
-import { getSession } from "@/lib/session";
+import { getSession, getJiraAuth } from "@/lib/session";
 
 import { getCurrentBoard } from "@/lib/board";
 import { waitUntil } from "@vercel/functions";
@@ -21,7 +21,7 @@ export async function GET() {
   if (!board) return NextResponse.json({ error: "no board" }, { status: 400 });
 
   const session = await getSession();
-  const auth = session ? { accessToken: session.accessToken, cloudId: session.cloudId } : undefined;
+  const auth = await getJiraAuth();
 
   // --- Review assignments (this tool), matched by email ---
   // Match on the stable accountId first; fall back to email for rows created

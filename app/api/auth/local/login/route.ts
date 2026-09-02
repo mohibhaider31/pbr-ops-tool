@@ -1,0 +1,64 @@
+export const dynamic = "force-dynamic";
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { createSession, sessionCookieString } from "@/lib/session";
+import { verifyPassword, isLockedOut, recordAttempt, clearFailures } from "@/lib/password";
+
+// Email + password login for local (stakeholder) accounts.
+//
+// These sessions carry NO Atlassian credentials, so the account is read-only by
+// construction — it cannot act in the org's Jira. Atlassian users continue to
+// use the OAuth flow.
+export async function POST(req: Request) {
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
+  const { email, password }: { email?: string; password?: string } = await req.json();
+
+  if (!email?.trim() || !password) {
+    return NextResponse.json({ error: "Email and password are required" }, { status: 400 });
+  }
+  const normalized = email.trim().toLowerCase();
+
+  if (await isLockedOut(normalized)) {
+    return NextResponse.json(
+      { error: "Too many failed attempts. Try again in 15 minutes." },
+      { status: 429 }
+    );
+  }
+
+  const person = await prisma.person.findUnique({ where: { email: normalized } });
+
+  // Uniform failure message and an attempt record either way, so the response
+  // doesn't reveal whether an address exists.
+  if (!person || person.authType !== "local" || !person.passwordHash) {
+    await recordAttempt(normalized, false, ip);
+    return NextResponse.json({ error: "Incorrect email or password" }, { status: 401 });
+  }
+
+  const ok = await verifyPassword(password, person.passwordHash);
+  if (!ok) {
+    await recordAttempt(normalized, false, ip);
+    return NextResponse.json({ error: "Incorrect email or password" }, { status: 401 });
+  }
+
+  await Promise.all([recordAttempt(normalized, true, ip), clearFailures(normalized)]);
+
+  if (!person.firstLoginAt) {
+    await prisma.person.update({ where: { id: person.id }, data: { firstLoginAt: new Date() } });
+  }
+
+  const sessionId = await createSession({
+    accountId: person.accountId!, // synthetic "local:<id>", set at provisioning
+    name: person.name,
+    email: person.email,
+    avatarUrl: person.avatarUrl,
+    authType: "local",
+    cloudId: null,
+    accessToken: null,
+    refreshToken: null,
+    accessExpiresAt: null,
+  });
+
+  const res = NextResponse.json({ ok: true, name: person.name });
+  res.headers.append("Set-Cookie", sessionCookieString(sessionId));
+  return res;
+}

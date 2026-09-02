@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getViewer } from "@/lib/viewer";
-import { getSession } from "@/lib/session";
+import { getSession, getJiraAuth } from "@/lib/session";
 import { getCurrentBoard } from "@/lib/board";
 import { fetchMyMentions } from "@/lib/jira";
 
@@ -20,7 +20,7 @@ export async function GET() {
 
   try {
     const session = await getSession();
-    const auth = session ? { accessToken: session.accessToken, cloudId: session.cloudId } : undefined;
+    const auth = await getJiraAuth();
     const [found, dismissed] = await Promise.all([
       fetchMyMentions(viewer.accountId, auth, { projectKey: board.jiraProjectKey }),
       prisma.dismissedMention.findMany({

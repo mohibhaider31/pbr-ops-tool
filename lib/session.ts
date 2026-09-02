@@ -16,13 +16,16 @@ export type Session = {
   name: string;
   email: string | null;
   avatarUrl: string | null;
-  cloudId: string;
-  accessToken: string;
-  refreshToken: string;
-  accessExpiresAt: number; // epoch ms
+  authType: string; // "atlassian" | "local"
+  // Null for local sessions - they carry no Atlassian credentials, which is
+  // what structurally prevents them from acting in Jira.
+  cloudId: string | null;
+  accessToken: string | null;
+  refreshToken: string | null;
+  accessExpiresAt: number | null;
 };
 
-export type NewSession = Omit<Session, "id">;
+export type NewSession = Omit<Session, "id" | "authType"> & { authType?: string };
 
 // Persist a new session row and return its id (goes in the cookie).
 export async function createSession(data: NewSession): Promise<string> {
@@ -32,10 +35,11 @@ export async function createSession(data: NewSession): Promise<string> {
       name: data.name,
       email: data.email,
       avatarUrl: data.avatarUrl,
-      cloudId: data.cloudId,
-      accessToken: data.accessToken,
-      refreshToken: data.refreshToken,
-      accessExpiresAt: new Date(data.accessExpiresAt),
+      authType: data.authType ?? "atlassian",
+      cloudId: data.cloudId ?? null,
+      accessToken: data.accessToken ?? null,
+      refreshToken: data.refreshToken ?? null,
+      accessExpiresAt: data.accessExpiresAt != null ? new Date(data.accessExpiresAt) : null,
     },
   });
   return row.id;
@@ -57,12 +61,15 @@ export const getSession = cache(async function getSession(): Promise<Session | n
   const BUFFER_MS = 2 * 60 * 1000;
   let accessToken = row.accessToken;
   let refreshToken = row.refreshToken;
-  let accessExpiresAt = row.accessExpiresAt.getTime();
+  let accessExpiresAt = row.accessExpiresAt?.getTime() ?? null;
 
-  if (Date.now() + BUFFER_MS >= accessExpiresAt) {
+  // Local sessions have no Atlassian tokens to refresh.
+  const isAtlassian = row.authType !== "local" && !!row.refreshToken && accessExpiresAt !== null;
+
+  if (isAtlassian && Date.now() + BUFFER_MS >= (accessExpiresAt as number)) {
     console.log("[perf] getSession: token refresh firing (Jira call on this request)");
     try {
-      const refreshed = await refreshTokens(row.refreshToken);
+      const refreshed = await refreshTokens(row.refreshToken as string);
       accessToken = refreshed.accessToken;
       refreshToken = refreshed.refreshToken;
       accessExpiresAt = Date.now() + refreshed.expiresIn * 1000;
@@ -87,6 +94,7 @@ export const getSession = cache(async function getSession(): Promise<Session | n
     name: row.name,
     email: row.email,
     avatarUrl: row.avatarUrl,
+    authType: row.authType,
     cloudId: row.cloudId,
     accessToken,
     refreshToken,
@@ -119,3 +127,18 @@ export function clearSessionCookie() {
 }
 
 export const SESSION_COOKIE = COOKIE_NAME;
+
+/**
+ * Jira credentials for the current session, or undefined if this session has
+ * none (a local stakeholder account).
+ *
+ * Callers pass the result to lib/jira functions. Returning undefined for local
+ * sessions means such an account can never act in Jira under its own identity;
+ * combined with the capability guard, it cannot reach write routes at all.
+ */
+export async function getJiraAuth(): Promise<{ accessToken: string; cloudId: string } | undefined> {
+  const s = await getSession();
+  if (!s || s.authType === "local") return undefined;
+  if (!s.accessToken || !s.cloudId) return undefined;
+  return { accessToken: s.accessToken, cloudId: s.cloudId };
+}

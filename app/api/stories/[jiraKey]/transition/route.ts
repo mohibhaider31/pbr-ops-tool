@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { transitionIssue } from "@/lib/jira";
-import { getSession } from "@/lib/session";
+import { getSession, getJiraAuth } from "@/lib/session";
 import { getViewer } from "@/lib/viewer";
 import { getCurrentBoard } from "@/lib/board";
 import { can } from "@/lib/permissions";
@@ -43,7 +43,7 @@ export async function POST(
     }
 
     const session = await getSession();
-    const auth = session ? { accessToken: session.accessToken, cloudId: session.cloudId } : undefined;
+    const auth = await getJiraAuth();
     await transitionIssue(params.jiraKey, to, auth);
     return NextResponse.json({ ok: true });
   } catch (err: any) {

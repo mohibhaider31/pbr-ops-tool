@@ -1,4 +1,4 @@
-import Link from "next/link";
+import LocalLoginForm from "@/components/LocalLoginForm";
 
 export default function LoginPage({
   searchParams,
@@ -40,6 +40,10 @@ export default function LoginPage({
             </span>
             Continue with Atlassian
           </a>
+
+          <div className="flex flex-col items-center">
+            <LocalLoginForm />
+          </div>
         </div>
 
         <p className="m-0 text-[11.5px] text-muted3 text-center leading-[1.6]">

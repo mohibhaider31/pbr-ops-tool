@@ -33,10 +33,24 @@ const ROLE_CAPS: Record<BoardRole, Capability[]> = {
 export type Viewer = {
   role: BoardRole;
   isAdmin: boolean;
+  // "atlassian" | "local". Local (stakeholder) accounts are read-only.
+  authType?: string;
 };
 
 export function can(viewer: Viewer | null, cap: Capability): boolean {
   if (!viewer) return false;
+
+  // HARD BLOCK, checked before role and before the admin override.
+  //
+  // Local accounts exist so stakeholders without Atlassian licences can READ
+  // (e.g. the roadmap). They hold no Atlassian token, so they could only ever
+  // reach Jira via the app-level API token - which would mean an account
+  // acting in the org's Jira without passing the org's own authentication.
+  // That is exactly the backdoor this design refuses to create, so no
+  // capability is ever granted to a local account, regardless of role or
+  // isAdmin.
+  if (viewer.authType === "local") return false;
+
   if (cap === "manage_people") return viewer.isAdmin;
   // Admins can do everything a PO can, plus manage people.
   if (viewer.isAdmin) return true;

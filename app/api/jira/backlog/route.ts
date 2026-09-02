@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { waitUntil } from "@vercel/functions";
 import { prisma } from "@/lib/prisma";
 import { getCurrentBoard } from "@/lib/board";
-import { getSession } from "@/lib/session";
+import { getJiraAuth } from "@/lib/session";
 import {
   localAllStories,
   refreshIfStale,
@@ -22,10 +22,7 @@ export async function GET() {
     const board = await getCurrentBoard();
     if (!board) return NextResponse.json({ error: "no board" }, { status: 400 });
 
-    const session = await getSession();
-    const auth = session
-      ? { accessToken: session.accessToken, cloudId: session.cloudId }
-      : undefined;
+    const auth = await getJiraAuth();
 
     // First ever load for this board: we have nothing to show, so populate
     // synchronously this once. Every subsequent load is served locally.
