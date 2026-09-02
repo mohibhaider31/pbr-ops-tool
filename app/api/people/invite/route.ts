@@ -5,6 +5,8 @@ import { requireCap } from "@/lib/guard";
 import { getCurrentBoard } from "@/lib/board";
 import { getViewer } from "@/lib/viewer";
 import { generateInviteToken } from "@/lib/password";
+import { logAuthEvent, ipFrom } from "@/lib/authAudit";
+import { sendInviteEmail, mailConfigured } from "@/lib/mail";
 
 const INVITE_TTL_DAYS = 7;
 
@@ -48,12 +50,25 @@ export async function POST(req: Request) {
     },
   });
 
+  await logAuthEvent({
+    kind: "INVITE_CREATED", actorName: viewer?.name ?? null, actorId: viewer?.accountId ?? null,
+    subject: normalized, authType: "local", ip: ipFrom(req),
+  });
+
   const base = process.env.APP_BASE_URL || "https://pbr-ops-tool.vercel.app";
+  const inviteUrl = `${base}/accept-invite?token=${raw}`;
+
+  // Email it if a provider is configured; otherwise hand the link back for the
+  // admin to relay. Either way the invite exists and is valid.
+  const mail = await sendInviteEmail(normalized, name.trim(), inviteUrl, INVITE_TTL_DAYS);
+
   return NextResponse.json({
     ok: true,
-    // Shown once to the admin to pass on. We can't email it without a mail
-    // provider configured, so the admin shares it directly.
-    inviteUrl: `${base}/accept-invite?token=${raw}`,
+    emailed: mail.delivered,
+    mailConfigured: mailConfigured(),
+    // Only returned when we couldn't deliver it — no point putting a live token
+    // on screen if it already reached their inbox.
+    inviteUrl: mail.delivered ? null : inviteUrl,
     expiresInDays: INVITE_TTL_DAYS,
   });
 }

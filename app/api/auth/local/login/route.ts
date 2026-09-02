@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createSession, sessionCookieString } from "@/lib/session";
 import { verifyPassword, isLockedOut, recordAttempt, clearFailures } from "@/lib/password";
+import { logAuthEvent, ipFrom } from "@/lib/authAudit";
 
 // A real bcrypt hash (cost 12) of a random string, used only to equalise
 // response timing when the account doesn't exist.
@@ -44,7 +45,16 @@ export async function POST(req: Request) {
   const ok = await verifyPassword(password, person.passwordHash);
   if (!ok) {
     await recordAttempt(normalized, false, ip);
+    await logAuthEvent({ kind: "LOGIN_FAILED", subject: normalized, authType: "local", ip });
     return NextResponse.json({ error: "Incorrect email or password" }, { status: 401 });
+  }
+
+  // Deactivated accounts keep their history but lose access.
+  if (person.deactivatedAt) {
+    await logAuthEvent({
+      kind: "LOGIN_FAILED", subject: normalized, authType: "local", ip, detail: "account deactivated",
+    });
+    return NextResponse.json({ error: "This account has been deactivated" }, { status: 403 });
   }
 
   await Promise.all([recordAttempt(normalized, true, ip), clearFailures(normalized)]);
@@ -63,6 +73,11 @@ export async function POST(req: Request) {
     accessToken: null,
     refreshToken: null,
     accessExpiresAt: null,
+  });
+
+  await logAuthEvent({
+    kind: "LOGIN", actorName: person.name, actorId: person.id,
+    subject: normalized, authType: "local", ip,
   });
 
   const res = NextResponse.json({ ok: true, name: person.name });

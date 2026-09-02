@@ -13,6 +13,24 @@ export default function LocalLoginForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [resetSent, setResetSent] = useState<string | null>(null);
+
+  const requestReset = async () => {
+    if (!email.trim()) { setError("Enter your email first, then tap reset."); return; }
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/auth/local/reset-request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const d = await res.json().catch(() => ({}));
+      setResetSent(d.message || "If that account exists, a reset link is on its way.");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const submit = async () => {
     if (!email.trim() || !password) return;
@@ -80,6 +98,18 @@ export default function LocalLoginForm() {
       >
         {busy ? "Signing in…" : "Sign in"}
       </button>
+
+      {resetSent ? (
+        <p className="m-0 text-[11.5px] text-good leading-[1.5]">{resetSent}</p>
+      ) : (
+        <button
+          onClick={requestReset}
+          disabled={busy}
+          className="self-start text-[11.5px] text-muted2 hover:text-key underline underline-offset-2 disabled:opacity-50"
+        >
+          Forgot your password?
+        </button>
+      )}
 
       <p className="m-0 text-[11px] text-muted3 leading-[1.5]">
         Stakeholder accounts are read-only and are created by invitation. If you work on the team,

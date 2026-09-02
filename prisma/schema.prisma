@@ -172,6 +172,9 @@ model Person {
   //               barred from Jira-writing capabilities (see lib/guard.ts).
   authType    String    @default("atlassian")
   passwordHash String?  // local accounts only; bcrypt, cost 12
+  // Suspend access without deleting the person and losing their history
+  // (reviews, comments, poker votes all reference them).
+  deactivatedAt DateTime?
   avatarUrl   String?
   isAdmin     Boolean   @default(false) // global, tool-level admin
   source      String    @default("jira") // "jira" | "manual"
@@ -509,4 +512,25 @@ model PasswordReset {
 
   @@index([personId])
   @@index([expiresAt])
+}
+
+
+// Authentication audit trail. Failed logins were recorded for throttling, but
+// nothing recorded who signed in, who invited whom, or who reset a password —
+// so there was no way to answer "how did this account get access?".
+model AuthEvent {
+  id        String   @id @default(cuid())
+  kind      String   // LOGIN | LOGIN_FAILED | LOGOUT | INVITE_CREATED | INVITE_ACCEPTED
+                     // | PASSWORD_RESET_ISSUED | PASSWORD_RESET_USED | ATLASSIAN_LINKED
+                     // | SESSIONS_REVOKED | ACCOUNT_DEACTIVATED | ACCOUNT_REACTIVATED
+  actorName String?  // who performed it (admin, or the person themselves)
+  actorId   String?
+  subject   String?  // email or name the action was about
+  authType  String?  // "local" | "atlassian"
+  ip        String?
+  detail    String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([kind, createdAt])
 }

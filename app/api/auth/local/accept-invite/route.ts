@@ -4,6 +4,7 @@ import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
 import { hashToken, hashPassword, validatePassword } from "@/lib/password";
 import { createSession, sessionCookieString } from "@/lib/session";
+import { logAuthEvent, ipFrom } from "@/lib/authAudit";
 
 // Redeem an invite and set a password. Single use, time-limited.
 export async function POST(req: Request) {
@@ -61,6 +62,11 @@ export async function POST(req: Request) {
     refreshToken: null,
     accessExpiresAt: null,
   });
+  await logAuthEvent({
+    kind: "INVITE_ACCEPTED", actorName: person.name, actorId: person.id,
+    subject: email, authType: "local", ip: ipFrom(req),
+  });
+
   const res = NextResponse.json({ ok: true, name: person.name });
   res.headers.append("Set-Cookie", sessionCookieString(sessionId));
   return res;

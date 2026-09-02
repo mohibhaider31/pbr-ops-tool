@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { exchangeCode, fetchMe, fetchCloudId } from "@/lib/atlassian-oauth";
 import { prisma } from "@/lib/prisma";
 import { createSession, getSession, sessionCookieString } from "@/lib/session";
+import { logAuthEvent, ipFrom } from "@/lib/authAudit";
 
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
@@ -57,6 +58,11 @@ export async function GET(req: NextRequest) {
         refreshToken,
         accessExpiresAt: Date.now() + expiresIn * 1000,
       });
+      await logAuthEvent({
+        kind: "ATLASSIAN_LINKED", actorName: currentPerson.name, actorId: me.accountId,
+        subject: currentPerson.email, authType: "atlassian", ip: ipFrom(req),
+      });
+
       const res = NextResponse.redirect(`${origin}/settings?linked=1`);
       res.headers.append("Set-Cookie", sessionCookieString(id));
       res.headers.append("Set-Cookie", "pbr_oauth_state=; Path=/; Max-Age=0");
@@ -77,7 +83,21 @@ export async function GET(req: NextRequest) {
       !!process.env.SEED_ADMIN_ACCOUNT_ID && me.accountId === process.env.SEED_ADMIN_ACCOUNT_ID;
 
     if (!known && !isBootstrapAdmin) {
+      await logAuthEvent({
+        kind: "LOGIN_FAILED", subject: emailLower ?? me.accountId,
+        authType: "atlassian", ip: ipFrom(req), detail: "not invited",
+      });
       return NextResponse.redirect(`${origin}/login?error=not_invited`);
+    }
+
+    // Deactivated accounts keep their history but lose access, whichever way
+    // they sign in.
+    if (known?.deactivatedAt) {
+      await logAuthEvent({
+        kind: "LOGIN_FAILED", subject: known.email, authType: "atlassian",
+        ip: ipFrom(req), detail: "account deactivated",
+      });
+      return NextResponse.redirect(`${origin}/login?error=deactivated`);
     }
 
     // Attach the Atlassian id to a person who was invited by email only.
@@ -98,6 +118,11 @@ export async function GET(req: NextRequest) {
       accessToken,
       refreshToken,
       accessExpiresAt: Date.now() + expiresIn * 1000,
+    });
+
+    await logAuthEvent({
+      kind: "LOGIN", actorName: known?.name || me.name, actorId: me.accountId,
+      subject: known?.email ?? emailLower, authType: "atlassian", ip: ipFrom(req),
     });
 
     const res = NextResponse.redirect(`${origin}/`);

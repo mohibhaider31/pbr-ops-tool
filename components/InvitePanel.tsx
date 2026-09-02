@@ -17,7 +17,7 @@ export default function InvitePanel({ boardName }: { boardName?: string }) {
   const [grantBoard, setGrantBoard] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [issued, setIssued] = useState<{ url: string; days: number } | null>(null);
+  const [issued, setIssued] = useState<{ url: string | null; days: number; emailed: boolean } | null>(null);
   const [copied, setCopied] = useState(false);
   const [pending, setPending] = useState<Invite[] | null>(null);
 
@@ -42,7 +42,7 @@ export default function InvitePanel({ boardName }: { boardName?: string }) {
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || "Could not create invite");
-      setIssued({ url: d.inviteUrl, days: d.expiresInDays });
+      setIssued({ url: d.inviteUrl ?? null, days: d.expiresInDays, emailed: !!d.emailed });
       setName("");
       setEmail("");
       loadPending();
@@ -54,7 +54,7 @@ export default function InvitePanel({ boardName }: { boardName?: string }) {
   };
 
   const copy = () => {
-    if (!issued) return;
+    if (!issued?.url) return;
     navigator.clipboard?.writeText(issued.url);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -89,22 +89,34 @@ export default function InvitePanel({ boardName }: { boardName?: string }) {
       {issued ? (
         <div className="flex flex-col gap-3">
           <div className="border border-good/40 bg-good/5 px-4 py-3 flex flex-col gap-2">
-            <span className="text-[12.5px] font-semibold text-good">Invite created</span>
-            <p className="m-0 text-[12px] text-muted leading-[1.5]">
-              Send this link to them. It works once and expires in {issued.days} days. It isn&apos;t
-              stored anywhere, so copy it now — if you lose it, just invite them again.
-            </p>
-            <div className="flex items-center gap-2">
-              <input
-                readOnly
-                value={issued.url}
-                onFocus={(e) => e.currentTarget.select()}
-                className="flex-1 h-[34px] px-2 border border-border bg-cream font-mono text-[11px]"
-              />
-              <button onClick={copy} className="h-[34px] px-3 text-[12px] font-semibold bg-ink text-white">
-                {copied ? "Copied" : "Copy"}
-              </button>
-            </div>
+            <span className="text-[12.5px] font-semibold text-good">
+              {issued.emailed ? "Invite emailed" : "Invite created"}
+            </span>
+            {issued.emailed ? (
+              <p className="m-0 text-[12px] text-muted leading-[1.5]">
+                We&apos;ve emailed them a link to set a password. It works once and expires in{" "}
+                {issued.days} days.
+              </p>
+            ) : (
+              <>
+                <p className="m-0 text-[12px] text-muted leading-[1.5]">
+                  No email provider is configured, so send this link to them yourself. It works once
+                  and expires in {issued.days} days — and it isn&apos;t stored anywhere, so copy it
+                  now. If you lose it, just invite them again.
+                </p>
+                <div className="flex items-center gap-2">
+                  <input
+                    readOnly
+                    value={issued.url ?? ""}
+                    onFocus={(e) => e.currentTarget.select()}
+                    className="flex-1 h-[34px] px-2 border border-border bg-cream font-mono text-[11px]"
+                  />
+                  <button onClick={copy} className="h-[34px] px-3 text-[12px] font-semibold bg-ink text-white">
+                    {copied ? "Copied" : "Copy"}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
           <button onClick={() => setIssued(null)} className="self-start text-[12.5px] text-key hover:text-accent">
             Invite someone else

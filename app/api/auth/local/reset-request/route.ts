@@ -2,6 +2,8 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { generateInviteToken, isLockedOut, recordAttempt } from "@/lib/password";
+import { sendResetEmail } from "@/lib/mail";
+import { logAuthEvent, ipFrom } from "@/lib/authAudit";
 
 const TTL_MS = 60 * 60 * 1000; // 1 hour — shorter than an invite
 
@@ -25,17 +27,25 @@ export async function POST(req: Request) {
   await recordAttempt(normalized, false, ip);
 
   const person = await prisma.person.findUnique({ where: { email: normalized } });
-  if (person && person.authType === "local") {
-    const { hash } = generateInviteToken();
+  if (person && person.authType === "local" && !person.deactivatedAt) {
+    const { raw, hash } = generateInviteToken();
     await prisma.passwordReset.create({
       data: { personId: person.id, tokenHash: hash, expiresAt: new Date(Date.now() + TTL_MS) },
     });
-    // Intentionally NOT returned. Without email delivery, the user contacts an
-    // admin, who issues a link via the admin endpoint.
+
+    const base = process.env.APP_BASE_URL || "https://pbr-ops-tool.vercel.app";
+    // The token is emailed, never returned in the response - otherwise anyone
+    // could request a reset for an address and read the token straight back.
+    await sendResetEmail(normalized, person.name, `${base}/reset-password?token=${raw}`, 60);
+    await logAuthEvent({
+      kind: "PASSWORD_RESET_ISSUED", subject: normalized, authType: "local",
+      ip, detail: "self-service",
+    });
   }
 
+  // Same response either way, so this can't be used to enumerate accounts.
   return NextResponse.json({
     ok: true,
-    message: "If that account exists, an administrator can issue you a reset link.",
+    message: "If that account exists, a reset link is on its way. Check your email.",
   });
 }

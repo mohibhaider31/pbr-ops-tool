@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { hashToken, hashPassword, validatePassword } from "@/lib/password";
+import { logAuthEvent, ipFrom } from "@/lib/authAudit";
 
 // Redeem a reset token and set a new password. Also invalidates every existing
 // session for that person, so a reset kicks out anyone holding an old cookie.
@@ -31,6 +32,12 @@ export async function POST(req: Request) {
     // Clear the failure window so they aren't locked out right after resetting.
     prisma.loginAttempt.deleteMany({ where: { email: person.email ?? "", success: false } }),
   ]);
+
+  await logAuthEvent({
+    kind: "PASSWORD_RESET_USED", actorName: person.name, actorId: person.id,
+    subject: person.email, authType: "local", ip: ipFrom(req),
+    detail: "all sessions revoked",
+  });
 
   return NextResponse.json({ ok: true });
 }

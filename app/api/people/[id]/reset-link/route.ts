@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireCap } from "@/lib/guard";
 import { generateInviteToken } from "@/lib/password";
+import { logAuthEvent } from "@/lib/authAudit";
+import { getViewer } from "@/lib/viewer";
 
 const TTL_MS = 60 * 60 * 1000;
 
@@ -24,6 +26,12 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   const { raw, hash } = generateInviteToken();
   await prisma.passwordReset.create({
     data: { personId: person.id, tokenHash: hash, expiresAt: new Date(Date.now() + TTL_MS) },
+  });
+
+  const admin = await getViewer();
+  await logAuthEvent({
+    kind: "PASSWORD_RESET_ISSUED", actorName: admin?.name ?? null,
+    subject: person.email, authType: "local",
   });
 
   const base = process.env.APP_BASE_URL || "https://pbr-ops-tool.vercel.app";
