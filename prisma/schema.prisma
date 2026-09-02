@@ -128,6 +128,11 @@ model PipelineItem {
 // revoke/refresh server-side.
 model AuthSession {
   id              String   @id @default(cuid())
+  // Absolute server-side expiry. The cookie's Max-Age is only a client hint —
+  // without this, a session id stayed valid on the server forever, which
+  // matters most for local accounts (they have no token refresh that would
+  // eventually fail).
+  expiresAt       DateTime?
   accountId       String
   name            String
   email           String?

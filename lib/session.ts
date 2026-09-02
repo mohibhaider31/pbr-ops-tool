@@ -28,9 +28,12 @@ export type Session = {
 export type NewSession = Omit<Session, "id" | "authType"> & { authType?: string };
 
 // Persist a new session row and return its id (goes in the cookie).
+const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
 export async function createSession(data: NewSession): Promise<string> {
   const row = await prisma.authSession.create({
     data: {
+      expiresAt: new Date(Date.now() + SESSION_TTL_MS),
       accountId: data.accountId,
       name: data.name,
       email: data.email,
@@ -53,6 +56,14 @@ export const getSession = cache(async function getSession(): Promise<Session | n
   if (!id) return null;
   const row = await prisma.authSession.findUnique({ where: { id } });
   if (!row) return null;
+
+  // Absolute expiry, enforced server-side. Rows created before this field
+  // existed have expiresAt = null and are treated as still valid, so nobody
+  // gets logged out by the upgrade itself.
+  if (row.expiresAt && row.expiresAt.getTime() < Date.now()) {
+    await prisma.authSession.deleteMany({ where: { id } }).catch(() => {});
+    return null;
+  }
 
   // Atlassian access tokens expire (~1h). If this one is expired or within a
   // 2-minute buffer, use the refresh token to get a fresh one and persist it.
