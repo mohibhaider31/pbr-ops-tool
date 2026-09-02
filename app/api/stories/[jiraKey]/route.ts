@@ -32,5 +32,12 @@ export async function GET(_req: Request, { params }: { params: { jiraKey: string
     });
   }
 
-  return NextResponse.json({ story: { ...story, jira } });
+  // Is this story roadmap-committed? Surfaced at PBR so a commitment made to
+  // stakeholders actually influences what gets prioritised.
+  const roadmap = await prisma.roadmapEntry.findUnique({
+    where: { boardId_jiraKey: { boardId: board.id, jiraKey: params.jiraKey } },
+    select: { targetDate: true, startDate: true, state: true, lane: true, version: true },
+  });
+
+  return NextResponse.json({ roadmap, story: { ...story, jira } });
 }

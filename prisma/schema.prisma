@@ -442,3 +442,51 @@ model LoginAttempt {
 
   @@index([email, createdAt])
 }
+
+// --- Roadmap ---
+//
+// Replaces Roadmunk. Two deliberate properties:
+//
+// 1. The roadmap is CURATED: an entry exists only because a PO published the
+//    story to it at PBR time. Not every story belongs on a roadmap.
+// 2. Dates and confirmed/tentative are OURS (human intent). Status and
+//    completion come from the JiraIssue projection, so the roadmap can't drift
+//    the way a hand-maintained one does — and viewing it needs no Jira call,
+//    which is what lets stakeholders in without Jira licences.
+model RoadmapEntry {
+  id          String    @id @default(cuid())
+  boardId     String
+  jiraKey     String
+  // Typed by hand: the team doesn't populate Jira's fixVersion, so this can't
+  // be derived. Rendered as a badge rather than smuggled into the title.
+  version     String?
+  lane        String    @default("PRODUCT") // PRODUCT | HOUSEKEEPING | RESOURCE
+  startDate   DateTime
+  targetDate  DateTime
+  // CONFIRMED renders blue, TENTATIVE grey — matching the existing convention.
+  state       String    @default("CONFIRMED")
+  order       Int       @default(0) // manual vertical ordering within a lane
+  note        String?
+  publishedBy String?
+  publishedAt DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([boardId, jiraKey])
+  @@index([boardId, targetDate])
+  @@index([boardId, lane])
+}
+
+// Standalone dated markers (UAT Release, Production Release, Regression).
+// These aren't stories, so they're created directly on the roadmap.
+model RoadmapMilestone {
+  id        String   @id @default(cuid())
+  boardId   String
+  label     String
+  date      DateTime
+  kind      String   @default("RELEASE") // RELEASE | UAT | REGRESSION | OTHER
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([boardId, date])
+}

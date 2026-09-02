@@ -11,7 +11,8 @@ export type Capability =
   | "pbr_approve" // final hop to Ready For Dev (PO only)
   | "pipeline_edit" // change layer statuses / owners / sprints
   | "poker_vote" // vote in planning poker (later)
-  | "manage_people"; // Settings -> People (admin only)
+  | "manage_people" // Settings -> People (admin only)
+  | "roadmap_edit"; // publish/edit roadmap entries and milestones (PO)
 
 // Board-role capabilities. Admin is handled separately (global override for
 // manage_people and general access).
@@ -24,8 +25,10 @@ const ROLE_CAPS: Record<BoardRole, Capability[]> = {
     "pbr_approve",
     "pipeline_edit",
     "poker_vote",
+    "roadmap_edit",
   ],
   BA: ["prioritize", "assign", "review", "pbr_send", "pipeline_edit", "poker_vote"],
+  // Note: roadmap_edit is PO-only; everyone else (incl. VIEWER) can read it.
   DEVELOPER: ["review", "pipeline_edit", "poker_vote"],
   VIEWER: [],
 };

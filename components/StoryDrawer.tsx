@@ -6,6 +6,7 @@ import { STAGE_META } from "@/lib/stage";
 import { avatarColor, initials } from "@/lib/avatar";
 import Runner from "./Runner";
 import PeoplePicker from "./PeoplePicker";
+import RoadmapPanel from "./RoadmapPanel";
 import { useViewer } from "@/lib/useViewer";
 import { useSync } from "./SyncProvider";
 
@@ -292,6 +293,14 @@ export default function StoryDrawer({
               : "Waiting on reviewers to mark done."}
           </span>
           <div className="flex-1" />
+          <div className="mb-3">
+            <RoadmapPanel
+              jiraKey={story.jiraKey}
+              roadmap={(story as any)._roadmap ?? null}
+              onChanged={() => onChanged()}
+            />
+          </div>
+
           {story.stage !== "PBR_DONE" && can("pbr_send") && (
             <button
               disabled={busy || pbrPath.length === 0}

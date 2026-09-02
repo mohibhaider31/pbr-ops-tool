@@ -180,7 +180,7 @@ export default function BacklogBoard() {
     let alive = true;
     fetch(`/api/stories/${openKey}`)
       .then((r) => r.json())
-      .then((d) => { if (alive && d?.story) setOpenStory(d.story); })
+      .then((d) => { if (alive && d?.story) setOpenStory({ ...d.story, _roadmap: d.roadmap ?? null }); })
       .catch(() => {});
     return () => { alive = false; };
   }, [openKey]);
