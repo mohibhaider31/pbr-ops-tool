@@ -21,6 +21,7 @@ const PUBLIC_PATHS = [
   "/reset-password",
   "/api/auth/local/reset-request",
   "/api/auth/local/reset-confirm",
+  "/api/auth/local/verify-2fa",
   // Scheduled outbox worker - authenticates with CRON_SECRET in the route.
   "/api/outbox/run",
 ];

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useViewer } from "@/lib/useViewer";
+import TwoFactorPanel from "./TwoFactorPanel";
 
 // Surfaces the session and audit endpoints, which previously worked but had no
 // UI — so a leaked cookie couldn't be revoked from the app, and nobody could
@@ -87,6 +88,8 @@ export default function SecurityPanel() {
 
   return (
     <div className="flex flex-col gap-7">
+      <TwoFactorPanel />
+
       {/* Sessions */}
       <section className="flex flex-col gap-3">
         <div className="flex items-end justify-between gap-4">

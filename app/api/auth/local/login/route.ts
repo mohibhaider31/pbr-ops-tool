@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { createSession, sessionCookieString } from "@/lib/session";
 import { verifyPassword, isLockedOut, recordAttempt, clearFailures } from "@/lib/password";
 import { logAuthEvent, ipFrom } from "@/lib/authAudit";
+import { generateInviteToken } from "@/lib/password";
 
 // A real bcrypt hash (cost 12) of a random string, used only to equalise
 // response timing when the account doesn't exist.
@@ -58,6 +59,20 @@ export async function POST(req: Request) {
   }
 
   await Promise.all([recordAttempt(normalized, true, ip), clearFailures(normalized)]);
+
+  // Password is correct — but if a second factor is enabled we must NOT create
+  // a session yet. Issue a short-lived, single-use challenge instead.
+  if (person.totpEnabledAt && person.totpSecret) {
+    const { raw, hash } = generateInviteToken();
+    await prisma.totpChallenge.create({
+      data: { personId: person.id, tokenHash: hash, expiresAt: new Date(Date.now() + 5 * 60 * 1000) },
+    });
+    return NextResponse.json({
+      requires2fa: true,
+      challenge: raw,
+      backupCodesRemaining: person.totpBackupCodes.length,
+    });
+  }
 
   if (!person.firstLoginAt) {
     await prisma.person.update({ where: { id: person.id }, data: { firstLoginAt: new Date() } });

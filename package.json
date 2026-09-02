@@ -11,12 +11,14 @@
   "dependencies": {
     "@prisma/client": "^5.20.0",
     "@types/bcryptjs": "^2.4.6",
+    "@types/qrcode": "^1.5.6",
     "@vercel/functions": "^3.9.5",
     "bcryptjs": "^3.0.3",
     "jose": "^6.2.4",
     "next": "14.2.15",
     "pusher": "^5.3.4",
     "pusher-js": "^8.6.0",
+    "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

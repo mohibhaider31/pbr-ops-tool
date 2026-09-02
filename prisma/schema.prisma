@@ -175,6 +175,11 @@ model Person {
   // Suspend access without deleting the person and losing their history
   // (reviews, comments, poker votes all reference them).
   deactivatedAt DateTime?
+  // TOTP second factor for local accounts. The secret is AES-256-GCM encrypted
+  // at rest (see lib/totp.ts) so a database leak alone can't mint valid codes.
+  totpSecret     String?
+  totpEnabledAt  DateTime?
+  totpBackupCodes String[] @default([]) // bcrypt hashes; each removed once used
   avatarUrl   String?
   isAdmin     Boolean   @default(false) // global, tool-level admin
   source      String    @default("jira") // "jira" | "manual"
@@ -533,4 +538,21 @@ model AuthEvent {
 
   @@index([createdAt])
   @@index([kind, createdAt])
+}
+
+
+// Short-lived challenge issued when a password is correct but a second factor
+// is still required. Stored (rather than a signed cookie) so it can be
+// single-use and shows up in the audit trail.
+model TotpChallenge {
+  id        String    @id @default(cuid())
+  personId  String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  attempts  Int       @default(0)
+  createdAt DateTime  @default(now())
+
+  @@index([personId])
+  @@index([expiresAt])
 }

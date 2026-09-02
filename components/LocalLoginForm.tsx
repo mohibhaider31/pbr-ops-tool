@@ -14,6 +14,9 @@ export default function LocalLoginForm() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [resetSent, setResetSent] = useState<string | null>(null);
+  // Set when the password was right but a second factor is required.
+  const [challenge, setChallenge] = useState<string | null>(null);
+  const [code, setCode] = useState("");
 
   const requestReset = async () => {
     if (!email.trim()) { setError("Enter your email first, then tap reset."); return; }
@@ -44,6 +47,12 @@ export default function LocalLoginForm() {
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || "Sign-in failed");
+      if (d.requires2fa) {
+        // No session yet — hold the challenge and ask for the code.
+        setChallenge(d.challenge);
+        setBusy(false);
+        return;
+      }
       router.push("/");
       router.refresh();
     } catch (e: any) {
@@ -51,6 +60,66 @@ export default function LocalLoginForm() {
       setBusy(false);
     }
   };
+
+  const submitCode = async () => {
+    if (!challenge || code.replace(/\s/g, "").length < 6) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/auth/local/verify-2fa", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ challenge, code }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || "Verification failed");
+      router.push("/");
+      router.refresh();
+    } catch (e: any) {
+      setError(e.message);
+      setBusy(false);
+    }
+  };
+
+  // Second step: the password was accepted, now the code.
+  if (challenge) {
+    return (
+      <div className="w-full flex flex-col gap-3 pt-1">
+        <div className="flex items-center gap-2">
+          <span className="h-px flex-1 bg-borderLight" />
+          <span className="font-mono text-[9.5px] tracking-[.1em] text-muted3">TWO-STEP VERIFICATION</span>
+          <span className="h-px flex-1 bg-borderLight" />
+        </div>
+        <p className="m-0 text-[12px] text-muted leading-[1.5]">
+          Enter the 6-digit code from your authenticator app, or one of your backup codes.
+        </p>
+        <input
+          autoFocus
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && submitCode()}
+          placeholder="000000"
+          className="h-[44px] px-3 border border-border bg-white outline-none font-mono text-[18px] tracking-[.3em] text-center focus:border-ink"
+        />
+        {error && <div className="text-[12.5px] text-accent">{error}</div>}
+        <button
+          onClick={submitCode}
+          disabled={busy || code.replace(/\s/g, "").length < 6}
+          className="h-[40px] bg-ink text-white text-[13px] font-semibold disabled:opacity-40"
+        >
+          {busy ? "Verifying…" : "Verify"}
+        </button>
+        <button
+          onClick={() => { setChallenge(null); setCode(""); setError(null); }}
+          className="self-start text-[11.5px] text-muted2 hover:text-key underline underline-offset-2"
+        >
+          Start over
+        </button>
+      </div>
+    );
+  }
 
   if (!open) {
     return (
