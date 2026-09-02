@@ -17,6 +17,8 @@ type Person = {
   isMember: boolean;
   isAdmin: boolean;
   source: string;
+  authType: string; // "local" (password) | "atlassian"
+  deactivatedAt: string | null;
   active: boolean;
   firstLoginAt: string | null;
 };
@@ -98,6 +100,35 @@ export default function PeopleSettings() {
       setPeople((prev) => prev?.map((x) => (x.id === p.id ? { ...x, isAdmin: !next } : x)) || prev);
       showToast(data.error || "Couldn't change admin");
     }
+  };
+
+  // Issue a one-time reset link for a password account. Only needed while
+  // there's no mail provider — with one, the user resets it themselves.
+  const issueResetLink = async (p: Person) => {
+    const res = await fetch(`/api/people/${p.id}/reset-link`, { method: "POST" });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) { showToast(d.error || "Couldn't issue a reset link"); return; }
+    try {
+      await navigator.clipboard?.writeText(d.resetUrl);
+      showToast(`Reset link copied — valid ${d.expiresInMinutes} minutes`);
+    } catch {
+      window.prompt("Copy this reset link (valid 60 minutes):", d.resetUrl);
+    }
+  };
+
+  // Suspend access WITHOUT deleting them: their reviews, comments and poker
+  // votes all reference this person.
+  const setActive = async (p: Person, active: boolean) => {
+    if (!active && !window.confirm(`Deactivate ${p.name}? They'll be signed out immediately and can't sign back in.`)) return;
+    const res = await fetch(`/api/people/${p.id}/deactivate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ active }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) { showToast(d.error || "Couldn't change status"); return; }
+    showToast(active ? `${p.name} reactivated` : `${p.name} deactivated`);
+    load();
   };
 
   const removePerson = async (p: Person) => {
@@ -315,7 +346,23 @@ export default function PeopleSettings() {
                     {p.source === "jira" ? "JIRA" : "MANUAL"}
                   </span>
                 </div>
-                <div className="flex justify-end">
+                <div className="flex justify-end items-center gap-2">
+                  {p.authType === "local" && (
+                    <button
+                      onClick={() => issueResetLink(p)}
+                      title="Issue a password reset link"
+                      className="text-muted4 hover:text-key text-[11px] opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      reset
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setActive(p, !!p.deactivatedAt)}
+                    title={p.deactivatedAt ? "Reactivate this account" : "Deactivate — revokes access but keeps their history"}
+                    className="text-muted4 hover:text-amberText text-[11px] opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    {p.deactivatedAt ? "enable" : "disable"}
+                  </button>
                   {p.source === "manual" && (
                     <button
                       onClick={() => removePerson(p)}

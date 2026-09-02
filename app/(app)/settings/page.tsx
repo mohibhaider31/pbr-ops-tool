@@ -1,5 +1,5 @@
-import PeopleSettings from "@/components/PeopleSettings";
+import SettingsTabs from "@/components/SettingsTabs";
 
 export default function SettingsPage() {
-  return <PeopleSettings />;
+  return <SettingsTabs />;
 }

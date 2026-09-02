@@ -28,7 +28,9 @@ export async function GET() {
       isMember: p.memberships.length > 0,
       isAdmin: p.isAdmin,
       source: p.source,
-      active: !!p.firstLoginAt,
+      authType: p.authType,
+      deactivatedAt: p.deactivatedAt ? p.deactivatedAt.toISOString() : null,
+      active: !!p.firstLoginAt && !p.deactivatedAt,
       firstLoginAt: p.firstLoginAt ? p.firstLoginAt.toISOString() : null,
     })),
   });
