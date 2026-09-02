@@ -54,5 +54,16 @@ export async function POST(req: Request) {
     create: { personId: person.id, boardId: board.id, role: (role as any) || "DEVELOPER" },
     update: {},
   });
-  return NextResponse.json({ person });
+  // Explicit projection. Returning the raw row here leaked passwordHash to the
+  // client - admin-only, but a bcrypt hash should never reach a browser.
+  return NextResponse.json({
+    person: {
+      id: person.id,
+      name: person.name,
+      email: person.email,
+      accountId: person.accountId,
+      isAdmin: person.isAdmin,
+      source: person.source,
+    },
+  });
 }

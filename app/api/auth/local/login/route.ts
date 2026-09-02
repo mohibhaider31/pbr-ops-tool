@@ -4,6 +4,10 @@ import { prisma } from "@/lib/prisma";
 import { createSession, sessionCookieString } from "@/lib/session";
 import { verifyPassword, isLockedOut, recordAttempt, clearFailures } from "@/lib/password";
 
+// A real bcrypt hash (cost 12) of a random string, used only to equalise
+// response timing when the account doesn't exist.
+const DUMMY_HASH = "$2a$12$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy";
+
 // Email + password login for local (stakeholder) accounts.
 //
 // These sessions carry NO Atlassian credentials, so the account is read-only by
@@ -27,9 +31,12 @@ export async function POST(req: Request) {
 
   const person = await prisma.person.findUnique({ where: { email: normalized } });
 
-  // Uniform failure message and an attempt record either way, so the response
-  // doesn't reveal whether an address exists.
+  // Uniform failure message AND uniform timing. Returning early here would
+  // skip bcrypt entirely, so a non-existent address would answer measurably
+  // faster than a wrong password - a user-enumeration side channel. Burn an
+  // equivalent hash comparison against a dummy before failing.
   if (!person || person.authType !== "local" || !person.passwordHash) {
+    await verifyPassword(password, DUMMY_HASH);
     await recordAttempt(normalized, false, ip);
     return NextResponse.json({ error: "Incorrect email or password" }, { status: 401 });
   }

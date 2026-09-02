@@ -18,6 +18,9 @@ const PUBLIC_PATHS = [
   "/accept-invite",
   "/api/auth/local/login",
   "/api/auth/local/accept-invite",
+  "/reset-password",
+  "/api/auth/local/reset-request",
+  "/api/auth/local/reset-confirm",
   // Scheduled outbox worker - authenticates with CRON_SECRET in the route.
   "/api/outbox/run",
 ];

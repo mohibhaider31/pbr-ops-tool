@@ -495,3 +495,18 @@ model RoadmapMilestone {
 
   @@index([boardId, date])
 }
+
+
+// Self-service password reset for local accounts. Same shape as LocalInvite:
+// only the token hash is stored, single use, short-lived.
+model PasswordReset {
+  id        String    @id @default(cuid())
+  personId  String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([personId])
+  @@index([expiresAt])
+}
