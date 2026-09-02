@@ -12,13 +12,13 @@ export async function POST(req: Request) {
   if (!token || !password)
     return NextResponse.json({ error: "Missing token or password" }, { status: 400 });
 
-  const problem = validatePassword(password);
-  if (problem) return NextResponse.json({ error: problem }, { status: 400 });
-
   const invite = await prisma.localInvite.findUnique({ where: { tokenHash: hashToken(token) } });
   if (!invite || invite.usedAt || invite.expiresAt < new Date()) {
     return NextResponse.json({ error: "This invite link is invalid or has expired" }, { status: 400 });
   }
+
+  const problem = validatePassword(password, { email: invite.email, name: invite.name });
+  if (problem) return NextResponse.json({ error: problem }, { status: 400 });
 
   const email = invite.email.toLowerCase();
   const passwordHash = await hashPassword(password);

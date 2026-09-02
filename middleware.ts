@@ -25,8 +25,42 @@ const PUBLIC_PATHS = [
   "/api/outbox/run",
 ];
 
+// State-changing requests must originate from this app.
+//
+// SameSite=Lax already blocks cookies on cross-site POSTs, which covers the
+// realistic CSRF cases — this is defence in depth, and cheaper than plumbing
+// per-form tokens. Server-to-server callers (the cron worker) send no Origin,
+// so they're allowed through here and authenticate with CRON_SECRET instead.
+const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+const ORIGIN_EXEMPT = ["/api/outbox/run"];
+
+function originAllowed(req: NextRequest): boolean {
+  if (!MUTATING.has(req.method)) return true;
+  if (ORIGIN_EXEMPT.some((p) => req.nextUrl.pathname.startsWith(p))) return true;
+
+  const origin = req.headers.get("origin");
+  // Browsers always send Origin on cross-origin mutating requests. A missing
+  // Origin here means a same-origin form post or a non-browser client; we fall
+  // back to Referer when present.
+  if (origin) return origin === req.nextUrl.origin;
+
+  const referer = req.headers.get("referer");
+  if (referer) {
+    try {
+      return new URL(referer).origin === req.nextUrl.origin;
+    } catch {
+      return false;
+    }
+  }
+  return true;
+}
+
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
+
+  if (!originAllowed(req)) {
+    return NextResponse.json({ error: "cross-origin request blocked" }, { status: 403 });
+  }
 
   // Allow public paths and Next internals/assets.
   if (

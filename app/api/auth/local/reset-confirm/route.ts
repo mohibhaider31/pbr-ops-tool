@@ -11,9 +11,6 @@ export async function POST(req: Request) {
   if (!token || !password)
     return NextResponse.json({ error: "Missing token or password" }, { status: 400 });
 
-  const problem = validatePassword(password);
-  if (problem) return NextResponse.json({ error: problem }, { status: 400 });
-
   const reset = await prisma.passwordReset.findUnique({ where: { tokenHash: hashToken(token) } });
   if (!reset || reset.usedAt || reset.expiresAt < new Date())
     return NextResponse.json({ error: "This reset link is invalid or has expired" }, { status: 400 });
@@ -21,6 +18,9 @@ export async function POST(req: Request) {
   const person = await prisma.person.findUnique({ where: { id: reset.personId } });
   if (!person || person.authType !== "local")
     return NextResponse.json({ error: "This reset link is invalid" }, { status: 400 });
+
+  const problem = validatePassword(password, { email: person.email, name: person.name });
+  if (problem) return NextResponse.json({ error: problem }, { status: 400 });
 
   const passwordHash = await hashPassword(password);
 

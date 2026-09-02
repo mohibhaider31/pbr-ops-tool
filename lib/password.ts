@@ -23,12 +23,47 @@ export async function verifyPassword(plain: string, hash: string): Promise<boole
 
 export type PasswordProblem = string | null;
 
-/** Minimum viable policy. Length carries most of the value here. */
-export function validatePassword(pw: string): PasswordProblem {
+// The passwords that actually get guessed. A full breach-list check would need
+// an external service (e.g. HaveIBeenPwned's k-anonymity API); this catches the
+// realistic offenders without a network dependency in the signup path.
+const COMMON = new Set([
+  "password", "password1", "password123", "passw0rd", "letmein", "welcome",
+  "qwerty", "qwerty123", "qwertyuiop", "123456", "1234567890", "12345678",
+  "iloveyou", "admin", "administrator", "changeme", "secret", "abc123",
+  "monkey", "dragon", "sunshine", "princess", "football", "baseball",
+  "trustno1", "master", "shadow", "superman", "starwars", "whatever",
+  "pbropstool", "opstool", "roadmap", "logiciel", "atlassian", "jira",
+]);
+
+function normalise(s: string) {
+  return s.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+/**
+ * Length carries most of the value, but reject the obvious cases too: a
+ * 12-character common password or the person's own email is technically
+ * compliant and practically worthless.
+ */
+export function validatePassword(pw: string, context?: { email?: string | null; name?: string | null }): PasswordProblem {
   if (pw.length < 12) return "Password must be at least 12 characters";
   if (pw.length > 200) return "Password is too long";
   if (!/[a-zA-Z]/.test(pw)) return "Password must contain a letter";
   if (!/[0-9]/.test(pw)) return "Password must contain a number";
+
+  const n = normalise(pw);
+  if (COMMON.has(n)) return "That password is too common — please choose another";
+  // Catch "password1234", "qwerty123456" etc.
+  for (const c of COMMON) {
+    if (c.length >= 6 && n.startsWith(c)) return "That password is too easy to guess";
+  }
+  // A single repeated character or a simple run.
+  if (/^(.)\1+$/.test(pw)) return "Password can't be a single repeated character";
+
+  const local = context?.email ? normalise(context.email.split("@")[0]) : "";
+  if (local.length >= 4 && n.includes(local)) return "Password can't contain your email name";
+  const name = context?.name ? normalise(context.name) : "";
+  if (name.length >= 5 && n.includes(name)) return "Password can't contain your own name";
+
   return null;
 }
 
