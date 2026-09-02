@@ -35,7 +35,12 @@ export async function POST(
 
     // Mirror to Jira via the durable outbox rather than a best-effort
     // background call, so a transient Jira failure is retried.
-    if (syncToJira) {
+    //
+    // Accounts with no linked Atlassian identity can comment in the tool but
+    // cannot push that comment to Jira - same invariant as the capability
+    // guard, applied here because mirroring is a flag rather than a capability.
+    const canMirror = session?.authType !== "local";
+    if (syncToJira && canMirror) {
       await enqueueOp({
         boardId: board.id,
         type: "ADD_COMMENT",

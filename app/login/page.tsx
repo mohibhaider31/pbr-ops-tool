@@ -25,7 +25,12 @@ export default function LoginPage({
             </p>
           </div>
 
-          {error && (
+          {error === "not_invited" ? (
+            <div className="border border-amberBorder bg-amberBg px-3 py-2 text-[12.5px] text-amberTextDark leading-[1.55]">
+              Your Atlassian account isn&apos;t on the invite list yet. This tool is invite-only —
+              ask an admin to add you, then sign in again.
+            </div>
+          ) : error && (
             <div className="border border-amberBorder bg-amberBg px-3 py-2 text-[12.5px] text-amberTextDark">
               Sign-in failed: {error}. Please try again.
             </div>

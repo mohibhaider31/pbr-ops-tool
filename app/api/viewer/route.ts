@@ -15,6 +15,7 @@ export async function GET() {
       avatarUrl: v.avatarUrl,
       role: board?.role ?? null,
       isAdmin: v.isAdmin,
+      authType: v.authType,
       boardId: board?.id ?? null,
       boardName: board?.name ?? null,
     },

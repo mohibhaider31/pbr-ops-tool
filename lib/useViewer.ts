@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { can as canDo, type Capability, type BoardRole } from "@/lib/permissions";
 
 export type ViewerInfo = {
+  authType?: string; // "atlassian" | "local" (invited, not yet linked)
   name: string;
   email: string | null;
   avatarUrl: string | null;
@@ -49,7 +50,7 @@ export function useViewer() {
   // cached viewer — otherwise false. But to avoid controls flickering away,
   // treat "still loading with no data" as loading, handled by callers.
   const can = (cap: Capability) =>
-    viewer ? canDo({ role: viewer.role ?? "VIEWER", isAdmin: viewer.isAdmin }, cap) : false;
+    viewer ? canDo({ role: viewer.role ?? "VIEWER", isAdmin: viewer.isAdmin, authType: viewer.authType }, cap) : false;
 
   return { viewer, can, loading };
 }

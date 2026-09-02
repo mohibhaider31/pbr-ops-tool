@@ -30,26 +30,36 @@ const ROLE_CAPS: Record<BoardRole, Capability[]> = {
   VIEWER: [],
 };
 
+// Capabilities that ultimately WRITE to Jira. These require a linked Atlassian
+// identity, because the write happens under the user's own OAuth token. An
+// account with no Atlassian identity could only reach Jira via the app-level
+// API token — i.e. acting in the org's Jira without passing the org's own
+// authentication. That is the one thing this design refuses to allow.
+//
+// Everything else touches only our own database, so it is gated by ROLE alone
+// and works fine for an account that hasn't linked Atlassian yet.
+const JIRA_WRITE_CAPS: Capability[] = ["pbr_send", "pbr_approve"];
+
 export type Viewer = {
   role: BoardRole;
   isAdmin: boolean;
-  // "atlassian" | "local". Local (stakeholder) accounts are read-only.
+  // "atlassian" = has a linked Atlassian identity, can act in Jira.
+  // "local"     = invited account, not linked (yet). Full use of in-tool
+  //               features per their role; no Jira writes.
   authType?: string;
 };
+
+export function requiresAtlassian(cap: Capability): boolean {
+  return JIRA_WRITE_CAPS.includes(cap);
+}
 
 export function can(viewer: Viewer | null, cap: Capability): boolean {
   if (!viewer) return false;
 
-  // HARD BLOCK, checked before role and before the admin override.
-  //
-  // Local accounts exist so stakeholders without Atlassian licences can READ
-  // (e.g. the roadmap). They hold no Atlassian token, so they could only ever
-  // reach Jira via the app-level API token - which would mean an account
-  // acting in the org's Jira without passing the org's own authentication.
-  // That is exactly the backdoor this design refuses to create, so no
-  // capability is ever granted to a local account, regardless of role or
-  // isAdmin.
-  if (viewer.authType === "local") return false;
+  // HARD BLOCK on Jira-writing capabilities for accounts with no linked
+  // Atlassian identity. Checked BEFORE role and before the isAdmin override,
+  // so a misconfigured admin flag cannot grant it either.
+  if (viewer.authType === "local" && requiresAtlassian(cap)) return false;
 
   if (cap === "manage_people") return viewer.isAdmin;
   // Admins can do everything a PO can, plus manage people.

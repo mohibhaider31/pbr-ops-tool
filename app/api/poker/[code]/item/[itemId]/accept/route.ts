@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { waitUntil } from "@vercel/functions";
 import { prisma } from "@/lib/prisma";
 import { getViewer } from "@/lib/viewer";
+import { getSession } from "@/lib/session";
 import { analyze } from "@/lib/poker";
 import { enqueueManyOp, runPending, type OutboxType } from "@/lib/outbox";
 import { pusher, pokerChannel, POKER_EVENTS } from "@/lib/pusher-server";
@@ -10,6 +11,15 @@ import { pusher, pokerChannel, POKER_EVENTS } from "@/lib/pusher-server";
 export async function POST(req: Request, { params }: { params: { code: string; itemId: string } }) {
   const viewer = await getViewer();
   if (!viewer) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
+  // Accepting an estimate writes story points to Jira, so it needs a linked
+  // Atlassian identity. Voting itself does not - that's our own data.
+  const session = await getSession();
+  if (session?.authType === "local")
+    return NextResponse.json(
+      { error: "Connect your Atlassian account to accept estimates", needsAtlassianLink: true },
+      { status: 403 }
+    );
 
   const { points }: { points: number } = await req.json();
   if (typeof points !== "number" || points < 0)

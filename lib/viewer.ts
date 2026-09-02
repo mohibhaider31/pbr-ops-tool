@@ -10,6 +10,7 @@ const SEED_ADMIN_ACCOUNT_ID = process.env.SEED_ADMIN_ACCOUNT_ID || "";
 
 export type Viewer = {
   personId: string;
+  authType: string; // "atlassian" | "local" (invited, not yet linked)
   accountId: string;
   name: string;
   email: string | null;
@@ -68,6 +69,7 @@ export const getViewer = cache(async function getViewer(): Promise<Viewer | null
 
   return {
     personId: person.id,
+    authType: session.authType,
     accountId: session.accountId,
     name: person.name,
     email: person.email,

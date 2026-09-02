@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import { SyncProvider } from "@/components/SyncProvider";
 import ServiceUnavailable from "@/components/ServiceUnavailable";
+import AtlassianLinkBanner from "@/components/AtlassianLinkBanner";
 import { getSession } from "@/lib/session";
 
 // Next signals redirect()/notFound() by throwing an error whose `digest`
@@ -33,7 +34,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <SyncProvider>
       <div className="flex h-screen w-full overflow-hidden bg-paper text-ink font-sans">
         <Sidebar />
-        <main className="flex-1 min-w-0 flex flex-col overflow-hidden">{children}</main>
+        <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
+          <AtlassianLinkBanner />
+          {children}
+        </main>
       </div>
     </SyncProvider>
   );
