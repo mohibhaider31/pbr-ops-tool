@@ -9,6 +9,10 @@ import { logAuthEvent, ipFrom } from "@/lib/authAudit";
 import { sendInviteEmail, mailConfigured } from "@/lib/mail";
 
 const INVITE_TTL_DAYS = 7;
+// Per-admin cap. Admin-gated already, but an unlimited invite mint is a poor
+// blast radius for a compromised admin session — and the links grant sight of
+// internal roadmap data.
+const MAX_INVITES_PER_HOUR = 20;
 
 // Admin-only provisioning of local (stakeholder) accounts. Invite-only by
 // design: there is no public signup, because the roadmap this grants sight of
@@ -37,6 +41,19 @@ export async function POST(req: Request) {
   }
 
   const [board, viewer] = await Promise.all([getCurrentBoard(), getViewer()]);
+
+  const recent = await prisma.localInvite.count({
+    where: {
+      createdById: viewer?.accountId ?? undefined,
+      createdAt: { gte: new Date(Date.now() - 60 * 60 * 1000) },
+    },
+  });
+  if (recent >= MAX_INVITES_PER_HOUR)
+    return NextResponse.json(
+      { error: `That's ${MAX_INVITES_PER_HOUR} invites in an hour — pausing as a safety check. Try again shortly.` },
+      { status: 429 }
+    );
+
   const { raw, hash } = generateInviteToken();
 
   await prisma.localInvite.create({

@@ -5,8 +5,6 @@ import { getParticipant } from "@/lib/pokerParticipant";
 import { analyze } from "@/lib/poker";
 
 export async function GET(_req: Request, { params }: { params: { code: string } }) {
-  const t0 = Date.now();
-
   // Resolve the participant and load the session in PARALLEL — the session
   // query doesn't depend on knowing who the viewer is, only the response
   // shaping does. Running them together collapses two sequential round-trips
@@ -18,8 +16,6 @@ export async function GET(_req: Request, { params }: { params: { code: string } 
       include: { items: { orderBy: { order: "asc" }, include: { votes: true, refinementVotes: true, investVotes: true } } },
     }),
   ]);
-  console.log(`[perf] poker-read code=${params.code} total=${Date.now() - t0}ms`);
-
   if (!me) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (!session) return NextResponse.json({ error: "not_found" }, { status: 404 });
 

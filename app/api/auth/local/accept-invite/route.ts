@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
-import { hashToken, hashPassword, validatePassword } from "@/lib/password";
+import { hashToken, hashPassword, validatePassword, isBreachedPassword } from "@/lib/password";
 import { createSession, sessionCookieString } from "@/lib/session";
 import { logAuthEvent, ipFrom } from "@/lib/authAudit";
 
@@ -19,6 +19,16 @@ export async function POST(req: Request) {
 
   const problem = validatePassword(password, { email: invite.email, name: invite.name });
   if (problem) return NextResponse.json({ error: problem }, { status: 400 });
+
+  // Breach-corpus check (k-anonymity: only a 5-char hash prefix is sent).
+  const breach = await isBreachedPassword(password);
+  if (breach.breached)
+    return NextResponse.json(
+      {
+        error: `That password has appeared in ${breach.count?.toLocaleString() ?? "known"} data breaches — please choose a different one`,
+      },
+      { status: 400 }
+    );
 
   const email = invite.email.toLowerCase();
   const passwordHash = await hashPassword(password);

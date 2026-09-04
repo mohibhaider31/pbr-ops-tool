@@ -78,7 +78,6 @@ export const getSession = cache(async function getSession(): Promise<Session | n
   const isAtlassian = row.authType !== "local" && !!row.refreshToken && accessExpiresAt !== null;
 
   if (isAtlassian && Date.now() + BUFFER_MS >= (accessExpiresAt as number)) {
-    console.log("[perf] getSession: token refresh firing (Jira call on this request)");
     try {
       const refreshed = await refreshTokens(row.refreshToken as string);
       accessToken = refreshed.accessToken;

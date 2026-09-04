@@ -81,6 +81,48 @@ export function hashToken(raw: string): string {
   return crypto.createHash("sha256").update(raw).digest("hex");
 }
 
+/**
+ * Check a password against HaveIBeenPwned's breach corpus using their
+ * k-anonymity range API.
+ *
+ * Only the first 5 hex characters of the SHA-1 are transmitted; the API returns
+ * every suffix in that bucket and we match locally, so the password itself
+ * never leaves this process.
+ *
+ * FAILS OPEN deliberately: if the API is slow or unreachable we accept the
+ * password rather than block someone from setting one up. The local common-list
+ * check in validatePassword() still applies either way.
+ */
+export async function isBreachedPassword(pw: string): Promise<{ breached: boolean; count?: number }> {
+  try {
+    const sha1 = crypto.createHash("sha1").update(pw, "utf8").digest("hex").toUpperCase();
+    const prefix = sha1.slice(0, 5);
+    const suffix = sha1.slice(5);
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2500);
+    const res = await fetch(`https://api.pwnedpasswords.com/range/${prefix}`, {
+      headers: { "Add-Padding": "true" }, // uniform response size
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    if (!res.ok) return { breached: false };
+
+    const body = await res.text();
+    for (const line of body.split("\n")) {
+      const [hashSuffix, countStr] = line.trim().split(":");
+      if (hashSuffix === suffix) {
+        const count = parseInt(countStr, 10) || 0;
+        // Padded entries come back with a count of 0 - not a real hit.
+        if (count > 0) return { breached: true, count };
+      }
+    }
+    return { breached: false };
+  } catch {
+    return { breached: false }; // fail open
+  }
+}
+
 // --- login throttling ---
 //
 // DB-backed on purpose: in-memory counters live per serverless instance, so
