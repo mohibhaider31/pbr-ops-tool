@@ -152,7 +152,7 @@ export default function GuestPokerRoom({ code, name }: { code: string; name: str
         </div>
       </div>
       <div className="border-t border-borderLight px-6 py-4 flex justify-center gap-2">
-        {Array.from({ length: 8 }).map((_, i) => <div key={i} className="w-[46px] h-[62px] bg-borderLight animate-pulse" />)}
+        {Array.from({ length: 8 }).map((_, i) => <div key={i} className="w-[52px] h-[62px] bg-borderLight animate-pulse" />)}
       </div>
     </div>
   );
@@ -209,7 +209,7 @@ export default function GuestPokerRoom({ code, name }: { code: string; name: str
                 </div>
                 {seats.map((p) => (
                   <div key={p.voterId} className="absolute flex flex-col items-center gap-1" style={{ left: 220 + p.x - 28, top: 220 + p.y - 40, width: 56 }}>
-                    <div className={`w-[30px] h-[42px] flex items-center justify-center font-mono font-bold text-[14px] border transition-all ${
+                    <div className={`w-[36px] h-[46px] flex items-center justify-center font-mono font-bold border transition-all ${(p.card?.length ?? 0) > 2 ? "text-[11px]" : "text-[14px]"} ${
                       revealed ? "bg-white text-ink border-border" : p.voted ? "bg-ink border-ink" : "bg-white border-dashed border-border"
                     }`}>{revealed ? (p.card ?? "–") : ""}</div>
                     <span style={{ background: avatarColor(p.voterId) }} className="w-[34px] h-[34px] rounded-full text-white text-[11px] font-mono font-semibold flex items-center justify-center border-2 border-paper">{initials(p.voterName)}</span>
@@ -258,7 +258,7 @@ export default function GuestPokerRoom({ code, name }: { code: string; name: str
                     key={card}
                     onClick={() => vote(card)}
                     disabled={revealed}
-                    className={`w-[46px] h-[62px] border font-mono text-[16px] font-bold transition-all ${
+                    className={`w-[52px] h-[62px] border font-mono font-bold transition-all ${card.length > 2 ? "text-[13px]" : "text-[17px]"} ${
                       picked
                         ? "bg-accent text-white border-accent -translate-y-[9px] shadow-lg"
                         : "bg-white text-ink border-border hover:border-ink hover:-translate-y-[4px] disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:border-border"

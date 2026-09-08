@@ -264,7 +264,7 @@ model PokerItem {
   status      PokerItemStatus @default(PENDING)
   state       PokerState      @default(VOTING) // voting/revealed for THIS story
   round       Int             @default(1)
-  finalPoints Int?
+  finalPoints Float? // fractional estimates are allowed (0.25, 0.5)
   alignmentScore Int? // 1-5 team alignment at accept time
   refinementPollOpen Boolean @default(false) // is the post-accept refinement poll active
   rediscussionScore Int? // 1-5 snapshot after the refinement poll closed

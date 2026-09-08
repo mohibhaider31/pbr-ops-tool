@@ -1,6 +1,8 @@
 // Poker estimation helpers: the card deck and reveal analysis.
 
-export const DECK = ["1", "2", "3", "5", "8", "13", "21", "?"];
+// The organisation's scale. Fractional cards let a trivial change be sized
+// honestly instead of being inflated to a 1.
+export const DECK = ["0.25", "0.5", "1", "3", "5", "8", "13", "?"];
 
 export type Vote = { voterId: string; voterName: string; card: string };
 
@@ -18,7 +20,7 @@ export type RevealAnalysis = {
   alignmentScore: number | null; // 1-5 team alignment; null when no numeric votes
 };
 
-const NUMERIC_DECK = [1, 2, 3, 5, 8, 13, 21];
+const NUMERIC_DECK = [0.25, 0.5, 1, 3, 5, 8, 13];
 
 function nearestDeckValue(n: number): number {
   return NUMERIC_DECK.reduce((best, v) => (Math.abs(v - n) < Math.abs(best - n) ? v : best), NUMERIC_DECK[0]);

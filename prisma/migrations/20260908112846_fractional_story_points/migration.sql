@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "PokerItem" ALTER COLUMN "finalPoints" SET DATA TYPE DOUBLE PRECISION;
+
