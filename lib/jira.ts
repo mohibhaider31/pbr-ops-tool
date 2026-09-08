@@ -259,6 +259,35 @@ export async function fetchProjectMembers(auth?: JiraAuth, opts?: JiraProjectOpt
 // --- Poker: write agreed story points back to Jira ---
 // Writes the confirmed estimate to this instance's Story Points field
 // (customfield_10024). Runs as the organizer's user token when provided.
+// The three quality scores have real numeric fields in Jira, so they belong on
+// the issue rather than buried in a comment - a comment isn't JQL-queryable, so
+// you can't report on "stories with alignment < 3".
+//
+// Overridable by env in case the field ids differ on another Jira site.
+export const SCORE_FIELDS = {
+  invest: process.env.JIRA_FIELD_INVEST || "customfield_12082",       // INVEST Quality Score
+  alignment: process.env.JIRA_FIELD_ALIGNMENT || "customfield_12083", // Alignment Spread Score
+  rediscussion: process.env.JIRA_FIELD_REDISCUSSION || "customfield_12084", // Re-discussion Score
+} as const;
+
+export type ScoreKind = keyof typeof SCORE_FIELDS;
+
+/** Write one of the quality scores to its Jira field. */
+export async function setStoryScore(
+  key: string,
+  kind: ScoreKind,
+  value: number,
+  auth?: JiraAuth
+) {
+  const fieldId = SCORE_FIELDS[kind];
+  if (!fieldId) throw new Error(`No Jira field configured for the ${kind} score`);
+  await jiraFetch(
+    `/rest/api/3/issue/${key}`,
+    { method: "PUT", body: JSON.stringify({ fields: { [fieldId]: value } }) },
+    auth
+  );
+}
+
 export async function setStoryPoints(key: string, points: number, auth?: JiraAuth) {
   await jiraFetch(
     `/rest/api/3/issue/${key}`,

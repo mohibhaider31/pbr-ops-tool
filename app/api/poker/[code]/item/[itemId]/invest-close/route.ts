@@ -41,6 +41,12 @@ export async function POST(_req: Request, { params }: { params: { code: string; 
 
   await enqueueOp({
     boardId: session.boardId,
+    type: "SET_STORY_SCORE",
+    jiraKey: item.jiraKey,
+    payload: { kind: "invest", value: investScore },
+  });
+  await enqueueOp({
+    boardId: session.boardId,
     type: "ADD_COMMENT",
     jiraKey: item.jiraKey,
     payload: {

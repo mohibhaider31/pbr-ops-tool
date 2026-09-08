@@ -52,7 +52,17 @@ export async function POST(_req: Request, { params }: { params: { code: string; 
     data: { refinementPollOpen: false, rediscussionScore, investPollOpen: true },
   });
 
-  // Durable Jira note via the outbox.
+  // The score itself always goes to its Jira field - a story that came out
+  // clean is a 5/5 and that's worth recording, not just the flagged ones.
+  await enqueueOp({
+    boardId,
+    type: "SET_STORY_SCORE",
+    jiraKey: item.jiraKey,
+    payload: { kind: "rediscussion", value: rediscussionScore },
+  });
+  waitUntil(runPending(5).then(() => {}).catch(() => {}));
+
+  // Durable Jira note via the outbox, only when the team flagged it.
   if (majorityNeedsWork) {
     await enqueueOp({
       boardId,

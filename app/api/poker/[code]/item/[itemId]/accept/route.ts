@@ -53,6 +53,14 @@ export async function POST(req: Request, { params }: { params: { code: string; i
     },
   ];
   if (alignmentScore != null) {
+    // Write the score to its real Jira field so it's JQL-queryable, and keep
+    // the comment for the human context (the spread, who accepted).
+    jobs.push({
+      boardId: item.session.boardId,
+      type: "SET_STORY_SCORE",
+      jiraKey: item.jiraKey,
+      payload: { kind: "alignment", value: alignmentScore },
+    });
     jobs.push({
       boardId: item.session.boardId,
       type: "ADD_COMMENT",

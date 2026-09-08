@@ -13,9 +13,9 @@
 // body itself.
 
 import { prisma } from "@/lib/prisma";
-import { setStoryPoints, addJiraComment, transitionIssue } from "@/lib/jira";
+import { setStoryPoints, addJiraComment, transitionIssue, setStoryScore, type ScoreKind } from "@/lib/jira";
 
-export type OutboxType = "SET_STORY_POINTS" | "ADD_COMMENT" | "TRANSITION_ISSUE";
+export type OutboxType = "SET_STORY_POINTS" | "ADD_COMMENT" | "TRANSITION_ISSUE" | "SET_STORY_SCORE";
 
 const BACKOFF_MS = [0, 15_000, 60_000, 300_000, 900_000]; // ~0s, 15s, 1m, 5m, 15m
 
@@ -77,6 +77,9 @@ async function execute(job: { type: string; jiraKey: string; payload: any }) {
       return;
     case "TRANSITION_ISSUE":
       await transitionIssue(job.jiraKey, String(job.payload.to));
+      return;
+    case "SET_STORY_SCORE":
+      await setStoryScore(job.jiraKey, job.payload.kind as ScoreKind, Number(job.payload.value));
       return;
     default:
       throw new Error(`Unknown outbox job type: ${job.type}`);
