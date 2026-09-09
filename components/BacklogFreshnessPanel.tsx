@@ -94,9 +94,10 @@ export default function BacklogFreshnessPanel() {
         <div className="flex flex-col gap-1 flex-1">
           <span className="text-[13.5px] font-semibold">Backlog freshness pass</span>
           <p className="m-0 text-[12px] text-muted leading-[1.55]">
-            Nudges every <strong>Story</strong> so Jira&apos;s last-updated date refreshes. Tasks,
-            sub-tasks and bugs are not touched. Watchers will be notified of each edit, and this
-            tab must stay open while it runs.
+            Nudges every <strong>Story in the backlog</strong> (Jira&apos;s &ldquo;To Do&rdquo;
+            category) so its last-updated date refreshes. Tasks, sub-tasks, bugs and anything
+            already In Progress or Done are left alone. Watchers are notified of each edit, and
+            this tab must stay open while it runs.
           </p>
         </div>
       </div>

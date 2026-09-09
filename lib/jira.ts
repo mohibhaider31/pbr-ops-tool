@@ -642,3 +642,39 @@ export async function touchStoryDescription(
   );
   return outcome;
 }
+
+/**
+ * Stories in the board's BACKLOG — i.e. Jira's "To Do" status *category*.
+ *
+ * Broader than the single "To Do" status (which misses other not-started
+ * statuses) but excludes anything In Progress or Done. This matches what the
+ * Jira board backlog shows, and is the correct scope for the freshness pass:
+ * touching closed work would be pointless and far more conspicuous.
+ */
+export async function fetchBacklogStoryKeys(
+  opts?: JiraProjectOpts,
+  auth?: JiraAuth
+): Promise<string[]> {
+  const projectKey = opts?.projectKey || DEFAULT_PROJECT;
+  const jql = `project = ${projectKey} AND issuetype = Story AND statusCategory = "To Do" ORDER BY created ASC`;
+  const keys: string[] = [];
+  let nextPageToken: string | undefined;
+  do {
+    const data = await jiraFetch(
+      `/rest/api/3/search/jql`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          jql,
+          maxResults: 100,
+          fields: ["summary"],
+          ...(nextPageToken ? { nextPageToken } : {}),
+        }),
+      },
+      auth
+    );
+    for (const i of data.issues || []) keys.push(i.key);
+    nextPageToken = data.isLast ? undefined : data.nextPageToken;
+  } while (nextPageToken);
+  return keys;
+}

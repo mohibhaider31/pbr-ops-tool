@@ -6,7 +6,7 @@ import { getCurrentBoard } from "@/lib/board";
 import { getSession, getJiraAuth } from "@/lib/session";
 import { getViewer } from "@/lib/viewer";
 import {
-  fetchAllStories,
+  fetchBacklogStoryKeys,
   fetchDescriptions,
   touchStoryDescription,
   type TouchOutcome,
@@ -20,8 +20,9 @@ import { logAuthEvent, ipFrom } from "@/lib/authAudit";
 // minutes and cannot run inside one serverless invocation, so the client walks
 // batches and shows progress.
 //
-// Story issue type only — fetchAllStories() filters on `issuetype = Story`, so
-// tasks, sub-tasks and bugs are never touched.
+// Scope: Stories in the "To Do" status CATEGORY — i.e. the board backlog.
+// Tasks, sub-tasks and bugs are excluded by issue type, and anything In
+// Progress or Done is excluded by category.
 //
 // PO (or admin) only, and requires a linked Atlassian identity, since it writes
 // to Jira under the caller's own token.
@@ -60,12 +61,8 @@ export async function GET() {
   if ("error" in g) return g.error;
 
   const auth = await getJiraAuth();
-  const stories = await fetchAllStories({ projectKey: g.board!.jiraProjectKey }, auth);
-  return NextResponse.json({
-    total: stories.length,
-    keys: stories.map((s) => s.key),
-    batchSize: MAX_BATCH,
-  });
+  const keys = await fetchBacklogStoryKeys({ projectKey: g.board!.jiraProjectKey }, auth);
+  return NextResponse.json({ total: keys.length, keys, batchSize: MAX_BATCH });
 }
 
 // Step 2: process one batch.
