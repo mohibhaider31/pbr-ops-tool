@@ -21,6 +21,8 @@ export default function BacklogFreshnessPanel() {
   const [phase, setPhase] = useState<"idle" | "running" | "done">("idle");
   const [dryRun, setDryRun] = useState(true);
   const [total, setTotal] = useState(0);
+  const [staleDays, setStaleDays] = useState(30);
+  const [backlogTotal, setBacklogTotal] = useState<number | null>(null);
   const [done, setDone] = useState(0);
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [failures, setFailures] = useState<Result[]>([]);
@@ -38,13 +40,14 @@ export default function BacklogFreshnessPanel() {
     setCancelled(false);
 
     try {
-      const listRes = await fetch("/api/admin/backlog-touch");
+      const listRes = await fetch(`/api/admin/backlog-touch?staleDays=${staleDays}`);
       const list = await listRes.json();
       if (!listRes.ok) throw new Error(list.error || "Couldn't load the story list");
 
       const keys: string[] = list.keys ?? [];
       const size: number = list.batchSize ?? 20;
       setTotal(keys.length);
+      setBacklogTotal(list.backlogTotal ?? null);
 
       const tally: Record<string, number> = {};
       const fails: Result[] = [];
@@ -94,16 +97,31 @@ export default function BacklogFreshnessPanel() {
         <div className="flex flex-col gap-1 flex-1">
           <span className="text-[13.5px] font-semibold">Backlog freshness pass</span>
           <p className="m-0 text-[12px] text-muted leading-[1.55]">
-            Nudges every <strong>Story in the backlog</strong> (Jira&apos;s &ldquo;To Do&rdquo;
-            category) so its last-updated date refreshes. Tasks, sub-tasks, bugs and anything
-            already In Progress or Done are left alone. Watchers are notified of each edit, and
-            this tab must stay open while it runs.
+            Nudges backlog <strong>Stories with no activity in {staleDays} days</strong> — the
+            ones the staleness metric counts — so their last-updated date refreshes. Tasks,
+            sub-tasks, bugs and anything In Progress or Done are left alone. Watchers are notified
+            of each edit, and this tab must stay open while it runs.
           </p>
         </div>
       </div>
 
       {phase === "idle" && (
         <>
+          <div className="flex items-center gap-2 text-[12.5px] text-muted">
+            <span>Stale after</span>
+            <input
+              type="number"
+              min={0}
+              max={365}
+              value={staleDays}
+              onChange={(e) => setStaleDays(Math.max(0, parseInt(e.target.value, 10) || 0))}
+              className="w-[58px] h-[28px] px-2 border border-border text-[12.5px] text-center"
+            />
+            <span>days without activity</span>
+            <span className="text-muted3">·</span>
+            <span className="text-muted3">0 = whole backlog</span>
+          </div>
+
           <label className="flex items-center gap-2 text-[12.5px] text-muted cursor-pointer">
             <input type="checkbox" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} />
             Dry run — count what would change without writing to Jira
@@ -141,6 +159,12 @@ export default function BacklogFreshnessPanel() {
       {phase === "done" && (
         <div className="flex flex-col gap-2">
           {error && <span className="text-[12.5px] text-accent">{error}</span>}
+          {backlogTotal != null && (
+            <span className="text-[12px] text-muted2">
+              {total} stale of {backlogTotal} backlog stories
+              {staleDays > 0 ? ` (no activity in ${staleDays}+ days)` : ""}
+            </span>
+          )}
           <span className="text-[12.5px]">
             {dryRun ? "Preview complete — nothing was written. " : "Done. "}
             <strong>{touched}</strong> {dryRun ? "would be touched" : "stories touched"}

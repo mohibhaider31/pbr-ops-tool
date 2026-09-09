@@ -648,15 +648,23 @@ export async function touchStoryDescription(
  *
  * Broader than the single "To Do" status (which misses other not-started
  * statuses) but excludes anything In Progress or Done. This matches what the
- * Jira board backlog shows, and is the correct scope for the freshness pass:
- * touching closed work would be pointless and far more conspicuous.
+ * Jira board backlog shows.
+ *
+ * `staleDays` narrows it to stories with no activity in that many days, which
+ * is what the staleness KPI actually measures — so the pass only touches
+ * stories that are genuinely counted against it, rather than the whole backlog.
  */
 export async function fetchBacklogStoryKeys(
-  opts?: JiraProjectOpts,
+  opts?: JiraProjectOpts & { staleDays?: number },
   auth?: JiraAuth
 ): Promise<string[]> {
   const projectKey = opts?.projectKey || DEFAULT_PROJECT;
-  const jql = `project = ${projectKey} AND issuetype = Story AND statusCategory = "To Do" ORDER BY created ASC`;
+  const staleClause =
+    opts?.staleDays && opts.staleDays > 0 ? ` AND updated <= -${Math.floor(opts.staleDays)}d` : "";
+  const jql =
+    `project = ${projectKey} AND issuetype = Story AND statusCategory = "To Do"` +
+    `${staleClause} ORDER BY updated ASC`;
+
   const keys: string[] = [];
   let nextPageToken: string | undefined;
   do {

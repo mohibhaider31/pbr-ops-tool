@@ -28,6 +28,9 @@ import { logAuthEvent, ipFrom } from "@/lib/authAudit";
 // to Jira under the caller's own token.
 
 const MAX_BATCH = 20;
+// The staleness KPI's window. Only stories past this are counted against it,
+// so only those need touching.
+const DEFAULT_STALE_DAYS = 30;
 
 async function guard() {
   const [board, session, viewer] = await Promise.all([
@@ -56,13 +59,28 @@ async function guard() {
 }
 
 // Step 1: the list of story keys to work through.
-export async function GET() {
+export async function GET(req: Request) {
   const g = await guard();
   if ("error" in g) return g.error;
 
+  const url = new URL(req.url);
+  const raw = parseInt(url.searchParams.get("staleDays") ?? "", 10);
+  const staleDays = Number.isFinite(raw) && raw >= 0 ? raw : DEFAULT_STALE_DAYS;
+
   const auth = await getJiraAuth();
-  const keys = await fetchBacklogStoryKeys({ projectKey: g.board!.jiraProjectKey }, auth);
-  return NextResponse.json({ total: keys.length, keys, batchSize: MAX_BATCH });
+  const [stale, whole] = await Promise.all([
+    fetchBacklogStoryKeys({ projectKey: g.board!.jiraProjectKey, staleDays }, auth),
+    // For context in the UI: how big is the backlog overall.
+    fetchBacklogStoryKeys({ projectKey: g.board!.jiraProjectKey }, auth),
+  ]);
+
+  return NextResponse.json({
+    total: stale.length,
+    keys: stale,
+    backlogTotal: whole.length,
+    staleDays,
+    batchSize: MAX_BATCH,
+  });
 }
 
 // Step 2: process one batch.
