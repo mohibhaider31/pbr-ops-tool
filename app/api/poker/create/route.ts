@@ -20,7 +20,12 @@ export async function POST() {
   // (rather than a cron) since it's cheap and create is infrequent.
   try {
     const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    await prisma.pokerSession.deleteMany({ where: { updatedAt: { lt: cutoff } } });
+    // Close out abandoned sessions rather than deleting them — the estimation
+    // history is worth keeping even when nobody formally ended the session.
+    await prisma.pokerSession.updateMany({
+      where: { updatedAt: { lt: cutoff }, endedAt: null },
+      data: { endedAt: new Date(), currentItemId: null },
+    });
   } catch {
     // non-fatal
   }

@@ -246,12 +246,19 @@ model PokerSession {
   organizerId   String    // accountId of the organizer
   organizerName String
   currentItemId String?   // the PokerItem currently on everyone's screen
+  // Sessions are ENDED, not deleted. Deleting cascaded away every item and
+  // vote, destroying the estimation history — rounds taken, who participated,
+  // alignment/INVEST/re-discussion scores — which is exactly the data the
+  // poker stats are built from.
+  endedAt       DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
   items PokerItem[]
 
   @@index([code])
+  @@index([boardId, createdAt])
+  @@index([boardId, endedAt])
 }
 
 model PokerItem {
