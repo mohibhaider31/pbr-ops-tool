@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import BacklogFreshnessPanel from "./BacklogFreshnessPanel";
 import { useRouter } from "next/navigation";
 import { avatarColor, initials } from "@/lib/avatar";
 
@@ -44,6 +45,7 @@ export default function AdminDashboard() {
       </header>
 
       <div className="flex-1 overflow-y-auto px-[30px] py-6 flex flex-col gap-8 max-w-[980px]">
+        <BacklogFreshnessPanel />
         {/* Stat cards */}
         <div className="grid grid-cols-4 gap-3">
           <Stat label="In PBR review" value={d.pbr.inReview} sub="stories being reviewed" />

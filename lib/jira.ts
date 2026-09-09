@@ -526,3 +526,119 @@ export async function fetchMyMentions(
   mentions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   return mentions;
 }
+
+// --- Bulk description touch (backlog freshness pass) ---
+//
+// Appends or removes a single trailing space in a story's description, which
+// updates Jira's `updated` timestamp. Deliberately a TOGGLE rather than an
+// append: repeated runs would otherwise accumulate unbounded whitespace, and a
+// no-op write may not register as an update at all. Toggling guarantees the
+// document actually changes on every pass while never growing.
+//
+// Story issue type only — never tasks, sub-tasks or bugs.
+
+export type TouchOutcome = "appended" | "removed" | "created" | "skipped" | "failed";
+
+/** Fetch descriptions for a batch of keys in ONE call rather than one per key. */
+export async function fetchDescriptions(
+  keys: string[],
+  auth?: JiraAuth
+): Promise<Map<string, any>> {
+  const out = new Map<string, any>();
+  if (keys.length === 0) return out;
+  const data = await jiraFetch(
+    `/rest/api/3/search/jql`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        jql: `key IN (${keys.join(",")})`,
+        maxResults: keys.length,
+        fields: ["description"],
+      }),
+    },
+    auth
+  );
+  for (const issue of data.issues || []) {
+    out.set(issue.key, issue.fields?.description ?? null);
+  }
+  return out;
+}
+
+/**
+ * Toggle a trailing space on the LAST text node of the description.
+ *
+ * Mutates only that one node's text — the document structure, formatting,
+ * panels, lists and links are left exactly as they were. Returns null when
+ * there's nothing sensible to change.
+ */
+function toggleTrailingSpace(doc: any): { doc: any; outcome: TouchOutcome } | null {
+  if (!doc || doc.type !== "doc") return null;
+
+  // Find the last text node by walking the tree depth-first from the end.
+  let target: any = null;
+  const walk = (node: any) => {
+    if (target) return;
+    if (Array.isArray(node.content)) {
+      for (let i = node.content.length - 1; i >= 0; i--) {
+        walk(node.content[i]);
+        if (target) return;
+      }
+    }
+    if (!target && node.type === "text" && typeof node.text === "string") target = node;
+  };
+  walk(doc);
+
+  if (!target) return null;
+
+  if (target.text.endsWith(" ")) {
+    target.text = target.text.replace(/ +$/, "");
+    return { doc, outcome: "removed" };
+  }
+  target.text = target.text + " ";
+  return { doc, outcome: "appended" };
+}
+
+/** A minimal description for stories that have none. */
+function blankDoc(): any {
+  return {
+    type: "doc",
+    version: 1,
+    content: [{ type: "paragraph", content: [{ type: "text", text: " " }] }],
+  };
+}
+
+/**
+ * Apply the freshness touch to one story.
+ * `dryRun` computes the outcome without writing to Jira.
+ */
+export async function touchStoryDescription(
+  key: string,
+  currentDoc: any,
+  dryRun: boolean,
+  auth?: JiraAuth
+): Promise<TouchOutcome> {
+  let nextDoc: any;
+  let outcome: TouchOutcome;
+
+  if (!currentDoc) {
+    nextDoc = blankDoc();
+    outcome = "created";
+  } else {
+    const result = toggleTrailingSpace(structuredClone(currentDoc));
+    if (!result) {
+      // A description with no text nodes at all (e.g. only an image). Leave it.
+      return "skipped";
+    }
+    nextDoc = result.doc;
+    outcome = result.outcome;
+  }
+
+  if (dryRun) return outcome;
+
+  await jiraFetch(
+    `/rest/api/3/issue/${key}`,
+    { method: "PUT", body: JSON.stringify({ fields: { description: nextDoc } }) },
+    auth
+  );
+  return outcome;
+}
