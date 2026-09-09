@@ -3,14 +3,16 @@
 import { useState } from "react";
 import PeopleSettings from "./PeopleSettings";
 import SecurityPanel from "./SecurityPanel";
+import BoardsPanel from "./BoardsPanel";
 
 const TABS = [
   { key: "people", label: "People" },
+  { key: "boards", label: "Boards" },
   { key: "security", label: "Security" },
 ] as const;
 
 export default function SettingsTabs() {
-  const [tab, setTab] = useState<"people" | "security">("people");
+  const [tab, setTab] = useState<"people" | "boards" | "security">("people");
 
   // People has its own full-height layout with a header, so render it as-is.
   if (tab === "people") {
@@ -26,7 +28,7 @@ export default function SettingsTabs() {
     <div className="flex-1 flex flex-col overflow-hidden">
       <TabBar tab={tab} setTab={setTab} />
       <div className="flex-1 overflow-y-auto px-[30px] py-6">
-        <SecurityPanel />
+        {tab === "boards" ? <BoardsPanel /> : <SecurityPanel />}
       </div>
     </div>
   );
@@ -37,7 +39,7 @@ function TabBar({
   setTab,
 }: {
   tab: string;
-  setTab: (t: "people" | "security") => void;
+  setTab: (t: "people" | "boards" | "security") => void;
 }) {
   return (
     <div className="flex gap-1 px-[30px] pt-5 border-b border-border">

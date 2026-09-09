@@ -686,3 +686,52 @@ export async function fetchBacklogStoryKeys(
   } while (nextPageToken);
   return keys;
 }
+
+/**
+ * Confirm a Jira project exists and we can read it, and report the statuses
+ * its Stories actually use — so a new board can be configured against real
+ * values instead of guesses.
+ */
+export async function verifyJiraProject(
+  projectKey: string,
+  auth?: JiraAuth
+): Promise<{
+  ok: boolean;
+  name?: string;
+  storyCount?: number;
+  statuses?: string[];
+  error?: string;
+}> {
+  try {
+    const project = await jiraFetch(`/rest/api/3/project/${projectKey}`, { method: "GET" }, auth);
+    if (!project?.key) return { ok: false, error: "Project not found" };
+
+    // Sample the Story statuses in use, for the status dropdowns.
+    const search = await jiraFetch(
+      `/rest/api/3/search/jql`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          jql: `project = ${projectKey} AND issuetype = Story ORDER BY updated DESC`,
+          maxResults: 100,
+          fields: ["status"],
+        }),
+      },
+      auth
+    );
+    const statuses = Array.from(
+      new Set((search.issues || []).map((i: any) => i.fields?.status?.name).filter(Boolean))
+    ).sort() as string[];
+
+    return {
+      ok: true,
+      name: project.name,
+      storyCount: search.total ?? (search.issues?.length ?? 0),
+      statuses,
+    };
+  } catch (err: any) {
+    const msg = String(err?.message || err);
+    if (msg.includes("404")) return { ok: false, error: "No such project, or you can't access it" };
+    return { ok: false, error: msg.slice(0, 200) };
+  }
+}
