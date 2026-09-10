@@ -18,6 +18,7 @@ type Person = {
   isAdmin: boolean;
   source: string;
   authType: string; // "local" (password) | "atlassian"
+  boards: { id: string; key: string; name: string; role: string }[];
   deactivatedAt: string | null;
   active: boolean;
   firstLoginAt: string | null;
@@ -346,6 +347,27 @@ export default function PeopleSettings() {
                     {p.source === "jira" ? "JIRA" : "MANUAL"}
                   </span>
                 </div>
+                <div className="flex items-center gap-1 flex-wrap justify-end mr-2">
+                  {(p.boards ?? []).length === 0 ? (
+                    <span
+                      className="font-mono text-[8.5px] tracking-[.06em] text-amberText border border-amberBorder px-[5px] py-[1px]"
+                      title="No product assigned — they'll see an empty state until added to a board"
+                    >
+                      NO PRODUCT
+                    </span>
+                  ) : (
+                    (p.boards ?? []).map((b) => (
+                      <span
+                        key={b.id}
+                        title={`${b.name} · ${b.role}`}
+                        className="font-mono text-[8.5px] tracking-[.06em] text-muted2 border border-border px-[5px] py-[1px]"
+                      >
+                        {b.key}
+                      </span>
+                    ))
+                  )}
+                </div>
+
                 <div className="flex justify-end items-center gap-2">
                   {p.authType === "local" && (
                     <button

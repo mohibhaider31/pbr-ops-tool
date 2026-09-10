@@ -3,6 +3,8 @@ import Sidebar from "@/components/Sidebar";
 import { SyncProvider } from "@/components/SyncProvider";
 import ServiceUnavailable from "@/components/ServiceUnavailable";
 import AtlassianLinkBanner from "@/components/AtlassianLinkBanner";
+import NoProductAssigned from "@/components/NoProductAssigned";
+import { getAccessibleBoards } from "@/lib/board";
 import { getSession } from "@/lib/session";
 
 // Next signals redirect()/notFound() by throwing an error whose `digest`
@@ -29,6 +31,18 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     return <ServiceUnavailable />;
   }
   if (!session) redirect("/login");
+
+  // Board membership is the access control, so belonging to none is a real
+  // state rather than an error. Without this the user hits 36 separate
+  // "no board" API failures and an app that looks broken.
+  const boards = await getAccessibleBoards();
+  if (boards.length === 0) {
+    return (
+      <div className="flex h-screen w-full overflow-hidden bg-paper text-ink font-sans">
+        <NoProductAssigned name={session.name} />
+      </div>
+    );
+  }
 
   return (
     <SyncProvider>

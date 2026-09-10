@@ -9,12 +9,16 @@ import { useCallback, useEffect, useState } from "react";
 // hash — so it cannot be recovered later; if it's lost, re-invite.
 
 type Invite = { id: string; email: string; name: string; expiresAt: string; createdAt: string };
+type BoardOpt = { id: string; name: string; jiraProjectKey: string };
+const ROLES = ["VIEWER", "DEVELOPER", "BA", "PO"];
 
-export default function InvitePanel({ boardName }: { boardName?: string }) {
+export default function InvitePanel() {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [grantBoard, setGrantBoard] = useState(true);
+  const [boards, setBoards] = useState<BoardOpt[]>([]);
+  const [boardId, setBoardId] = useState("");
+  const [role, setRole] = useState("VIEWER");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [issued, setIssued] = useState<{ url: string | null; days: number; emailed: boolean } | null>(null);
@@ -30,6 +34,17 @@ export default function InvitePanel({ boardName }: { boardName?: string }) {
 
   useEffect(() => { if (open) loadPending(); }, [open, loadPending]);
 
+  // Which products this person could be given. Assignment is explicit: with no
+  // board they'd sign in to "no product assigned" rather than landing on
+  // whatever board happens to be default.
+  useEffect(() => {
+    if (!open) return;
+    fetch("/api/boards")
+      .then((r) => r.json())
+      .then((d) => Array.isArray(d?.boards) && setBoards(d.boards))
+      .catch(() => {});
+  }, [open]);
+
   const submit = async () => {
     if (!name.trim() || !email.trim()) return;
     setBusy(true);
@@ -38,7 +53,7 @@ export default function InvitePanel({ boardName }: { boardName?: string }) {
       const res = await fetch("/api/people/invite", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, grantBoardAccess: grantBoard }),
+        body: JSON.stringify({ name, email, boardId: boardId || null, role }),
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || "Could not create invite");
@@ -141,10 +156,38 @@ export default function InvitePanel({ boardName }: { boardName?: string }) {
             />
           </div>
 
-          <label className="flex items-center gap-2 text-[12.5px] text-muted cursor-pointer">
-            <input type="checkbox" checked={grantBoard} onChange={(e) => setGrantBoard(e.target.checked)} />
-            Give them view access to {boardName || "this board"}
-          </label>
+          <div className="flex gap-2 items-end">
+            <label className="flex-1 flex flex-col gap-[3px]">
+              <span className="font-mono text-[9px] tracking-[.09em] text-muted3">PRODUCT / BOARD</span>
+              <select
+                value={boardId}
+                onChange={(e) => setBoardId(e.target.value)}
+                className="h-[34px] px-2 border border-border text-[13px] bg-white"
+              >
+                <option value="">No product yet</option>
+                {boards.map((b) => (
+                  <option key={b.id} value={b.id}>{b.jiraProjectKey} — {b.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-[3px]">
+              <span className="font-mono text-[9px] tracking-[.09em] text-muted3">ROLE</span>
+              <select
+                value={role}
+                onChange={(e) => setRole(e.target.value)}
+                disabled={!boardId}
+                className="h-[34px] px-2 border border-border text-[13px] bg-white disabled:opacity-50"
+              >
+                {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+              </select>
+            </label>
+          </div>
+          {!boardId && (
+            <span className="text-[11.5px] text-amberText">
+              Without a product they&apos;ll sign in and see &ldquo;no product assigned&rdquo; until
+              someone adds them to a board.
+            </span>
+          )}
 
           {error && <span className="text-[12.5px] text-accent">{error}</span>}
 

@@ -52,12 +52,15 @@ export async function POST(req: Request) {
 
   await prisma.localInvite.update({ where: { id: invite.id }, data: { usedAt: new Date() } });
 
-  // Optional board access, always VIEWER for local accounts.
+  // Grant the board and role the admin chose at invite time. With no board the
+  // person lands on the "no product assigned" screen, which is the correct
+  // outcome — better than defaulting them onto someone else's product.
   if (invite.boardId) {
+    const role = ["PO", "BA", "DEVELOPER", "VIEWER"].includes(invite.role) ? invite.role : "VIEWER";
     await prisma.boardMembership.upsert({
       where: { personId_boardId: { personId: person.id, boardId: invite.boardId } },
-      create: { personId: person.id, boardId: invite.boardId, role: "VIEWER" },
-      update: { role: "VIEWER" },
+      create: { personId: person.id, boardId: invite.boardId, role: role as any },
+      update: { role: role as any },
     });
   }
 

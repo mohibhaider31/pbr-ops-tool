@@ -12,9 +12,13 @@ export async function GET() {
   const board = await getCurrentBoard();
   if (!board) return NextResponse.json({ people: [], boardId: null });
 
+  // ALL memberships, not just this board's — an admin needs to see which
+  // products each person can reach, since that's the access control.
   const people = await prisma.person.findMany({
     orderBy: [{ isAdmin: "desc" }, { name: "asc" }],
-    include: { memberships: { where: { boardId: board.id } } },
+    include: {
+      memberships: { include: { board: { select: { id: true, name: true, jiraProjectKey: true } } } },
+    },
   });
   return NextResponse.json({
     boardId: board.id,
@@ -24,8 +28,15 @@ export async function GET() {
       name: p.name,
       email: p.email,
       avatarUrl: p.avatarUrl,
-      role: p.memberships[0]?.role ?? null, // role on current board
-      isMember: p.memberships.length > 0,
+      role: p.memberships.find((m) => m.boardId === board.id)?.role ?? null, // on current board
+      isMember: p.memberships.some((m) => m.boardId === board.id),
+      // Every product this person can reach, for the admin view.
+      boards: p.memberships.map((m) => ({
+        id: m.board.id,
+        key: m.board.jiraProjectKey,
+        name: m.board.name,
+        role: m.role,
+      })),
       isAdmin: p.isAdmin,
       source: p.source,
       authType: p.authType,

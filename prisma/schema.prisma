@@ -441,7 +441,8 @@ model LocalInvite {
   email      String
   name       String
   tokenHash  String    @unique // sha256 of the emailed token; raw token never stored
-  boardId    String?   // optional board to grant VIEWER on
+  boardId    String?   // board to grant access to on acceptance
+  role       String    @default("VIEWER") // role on that board
   expiresAt  DateTime
   usedAt     DateTime?
   createdById String?

@@ -21,8 +21,9 @@ export async function POST(req: Request) {
   const denied = await requireCap("manage_people");
   if (denied) return denied;
 
-  const { email, name, grantBoardAccess }: { email?: string; name?: string; grantBoardAccess?: boolean } =
-    await req.json();
+  const {
+    email, name, boardId, role,
+  }: { email?: string; name?: string; boardId?: string; role?: string } = await req.json();
 
   if (!email?.trim() || !name?.trim())
     return NextResponse.json({ error: "Name and email are required" }, { status: 400 });
@@ -61,7 +62,11 @@ export async function POST(req: Request) {
       email: normalized,
       name: name.trim(),
       tokenHash: hash, // raw token is never stored
-      boardId: grantBoardAccess && board ? board.id : null,
+      // Explicit board assignment. Without one the person signs in to a
+      // "no product assigned" screen rather than silently landing on whatever
+      // board happens to be default.
+      boardId: boardId || null,
+      role: ["PO", "BA", "DEVELOPER", "VIEWER"].includes(role ?? "") ? role! : "VIEWER",
       expiresAt: new Date(Date.now() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000),
       createdById: viewer?.accountId ?? null,
     },
