@@ -30,6 +30,10 @@ type Member = {
 };
 type Candidate = { id: string; name: string; email: string | null };
 type Verify = { ok: boolean; name?: string; storyCount?: number; statuses?: string[]; error?: string };
+type ReconcileRow = {
+  personId: string; name: string; email: string | null; role: string;
+  isAdmin: boolean; authType: string; isContributor: boolean; hasJiraIdentity: boolean;
+};
 
 const ROLES = ["PO", "BA", "DEVELOPER", "VIEWER"];
 
@@ -257,6 +261,9 @@ function BoardDetail({ board, onChanged }: { board: Board; onChanged: () => void
   const [members, setMembers] = useState<Member[] | null>(null);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [addId, setAddId] = useState("");
+  const [recon, setRecon] = useState<{ suggested: ReconcileRow[]; contributorCount: number; memberCount: number } | null>(null);
+  const [reconBusy, setReconBusy] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
   const [addRole, setAddRole] = useState("VIEWER");
   const [note, setNote] = useState<string | null>(null);
 
@@ -298,6 +305,39 @@ function BoardDetail({ board, onChanged }: { board: Board; onChanged: () => void
     });
     load();
     onChanged();
+  };
+
+  // Compare membership against who has actually worked on the Jira project.
+  const reviewAccess = async () => {
+    setReconBusy(true);
+    setNote(null);
+    try {
+      const res = await fetch(`/api/boards/${board.id}/reconcile`);
+      const d = await res.json();
+      if (!res.ok) { setNote(d.error || "Couldn't review"); return; }
+      setRecon({ suggested: d.suggested ?? [], contributorCount: d.contributorCount, memberCount: d.memberCount });
+      setPicked(new Set((d.suggested ?? []).map((r: ReconcileRow) => r.personId)));
+    } finally {
+      setReconBusy(false);
+    }
+  };
+
+  const removePicked = async () => {
+    if (picked.size === 0) return;
+    setReconBusy(true);
+    try {
+      await fetch(`/api/boards/${board.id}/reconcile`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ personIds: Array.from(picked) }),
+      });
+      setRecon(null);
+      setPicked(new Set());
+      load();
+      onChanged();
+    } finally {
+      setReconBusy(false);
+    }
   };
 
   const makeDefault = async () => {
@@ -379,7 +419,62 @@ function BoardDetail({ board, onChanged }: { board: Board; onChanged: () => void
 
       {note && <span className="text-[12px] text-accent">{note}</span>}
 
+      {recon && (
+        <div className="border border-amberBorder bg-amberBg p-3 flex flex-col gap-2">
+          <span className="text-[12.5px] font-semibold text-amberTextDark">
+            {recon.memberCount} members · {recon.contributorCount} people have actually worked on{" "}
+            {board.jiraProjectKey}
+          </span>
+          {recon.suggested.length === 0 ? (
+            <span className="text-[12px] text-amberTextDark">
+              Every member with a Jira identity is a contributor. Nothing to clean up.
+            </span>
+          ) : (
+            <>
+              <p className="m-0 text-[12px] text-amberTextDark leading-[1.5]">
+                {recon.suggested.length} members have never been an assignee or reporter here —
+                likely added by a bulk sync. Admins and stakeholder accounts are excluded, since
+                they legitimately may not appear in Jira issues. Untick anyone who should stay.
+              </p>
+              <div className="max-h-[220px] overflow-y-auto flex flex-col gap-[2px] bg-white/60 p-2">
+                {recon.suggested.map((r) => (
+                  <label key={r.personId} className="flex items-center gap-2 text-[12px] cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={picked.has(r.personId)}
+                      onChange={(e) => {
+                        const next = new Set(picked);
+                        e.target.checked ? next.add(r.personId) : next.delete(r.personId);
+                        setPicked(next);
+                      }}
+                    />
+                    <span className="font-medium">{r.name}</span>
+                    <span className="text-muted3">{r.email}</span>
+                    <span className="ml-auto font-mono text-[10px] text-muted3">{r.role}</span>
+                  </label>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={removePicked}
+                  disabled={reconBusy || picked.size === 0}
+                  className="h-[30px] px-3 text-[12px] font-semibold bg-accent text-white disabled:opacity-40"
+                >
+                  Remove {picked.size} from this board
+                </button>
+                <button onClick={() => setRecon(null)} className="h-[30px] px-3 text-[12px] border border-border">
+                  Cancel
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       <div className="flex gap-3 pt-1">
+        <button onClick={reviewAccess} disabled={reconBusy} className="text-[12px] text-key hover:text-accent disabled:opacity-50">
+          {reconBusy ? "Checking…" : "Review access against Jira"}
+        </button>
         {!board.isDefault && (
           <button onClick={makeDefault} className="text-[12px] text-key hover:text-accent">
             Make default board

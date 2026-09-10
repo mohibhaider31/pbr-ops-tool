@@ -27,6 +27,28 @@ export default function Sidebar() {
   // click produced no visible response at all and felt like it hadn't
   // registered. Cleared once the pathname actually changes.
   const [navigatingTo, setNavigatingTo] = useState<string | null>(null);
+  const [rescanning, setRescanning] = useState(false);
+  const [rescanNote, setRescanNote] = useState<string | null>(null);
+
+  // Re-read this user's Jira project access and grant any matching boards.
+  // Has to be self-service: only their own token can see their access.
+  const rescanBoards = async () => {
+    setRescanning(true);
+    setRescanNote(null);
+    try {
+      const res = await fetch("/api/auth/rescan-boards", { method: "POST" });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { setRescanNote(d.error || "Couldn't check"); return; }
+      if ((d.granted ?? []).length > 0) { location.reload(); return; }
+      setRescanNote(
+        (d.noMatch ?? []).length > 0
+          ? `No new products. ${d.noMatch.length} of your Jira projects have no board here.`
+          : "No new products found."
+      );
+    } finally {
+      setRescanning(false);
+    }
+  };
   useEffect(() => { setNavigatingTo(null); }, [pathname]);
   const [user, setUser] = useState<{ name: string; email: string | null; role?: string; isAdmin?: boolean; boardId?: string | null; boardName?: string | null } | null>(null);
   const [boards, setBoards] = useState<{ id: string; name: string; jiraProjectKey: string }[]>([]);
@@ -76,8 +98,8 @@ export default function Sidebar() {
 
         <div className="px-3 relative">
           <button
-            onClick={() => boards.length > 1 && setBoardMenuOpen((v) => !v)}
-            className={`w-full border border-railBorder bg-railRaised px-[11px] py-[10px] flex items-center gap-[9px] text-left ${boards.length > 1 ? "hover:border-railMuted2 cursor-pointer" : "cursor-default"}`}
+            onClick={() => setBoardMenuOpen((v) => !v)}
+            className="w-full border border-railBorder bg-railRaised px-[11px] py-[10px] flex items-center gap-[9px] text-left hover:border-railMuted2 cursor-pointer"
           >
             <span className="flex flex-col gap-[3px] flex-1 min-w-0">
               <span className="font-mono text-[9.5px] tracking-[.09em] text-railMuted">BOARD</span>
@@ -88,12 +110,13 @@ export default function Sidebar() {
                 Jira · {boards.find((b) => b.id === user?.boardId)?.jiraProjectKey || "—"}
               </span>
             </span>
-            {boards.length > 1 && (
+            {(
+              true) && (
               <span className="font-mono text-[10px] text-railMuted2 flex-none">{boardMenuOpen ? "▴" : "▾"}</span>
             )}
           </button>
 
-          {boardMenuOpen && boards.length > 1 && (
+          {boardMenuOpen && (
             <div className="absolute left-3 right-3 mt-1 z-20 border border-railBorder bg-rail shadow-xl">
               {boards.map((b) => (
                 <button
@@ -105,6 +128,19 @@ export default function Sidebar() {
                   <span className="font-mono text-[9.5px] text-railMuted2">Jira · {b.jiraProjectKey}</span>
                 </button>
               ))}
+
+              <div className="border-t border-railBorder px-[11px] py-[9px] flex flex-col gap-1">
+                <button
+                  onClick={rescanBoards}
+                  disabled={rescanning}
+                  className="text-left text-[11.5px] text-railMuted2 hover:text-railText disabled:opacity-50"
+                >
+                  {rescanning ? "Checking Jira…" : "Refresh my products"}
+                </button>
+                {rescanNote && (
+                  <span className="text-[10.5px] text-railMuted leading-[1.4]">{rescanNote}</span>
+                )}
+              </div>
             </div>
           )}
         </div>
