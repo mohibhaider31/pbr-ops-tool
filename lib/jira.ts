@@ -788,3 +788,23 @@ export async function fetchVisibleProjectKeys(auth?: JiraAuth): Promise<string[]
   }
   return keys;
 }
+
+/** Projects the authenticated user can browse, with names. */
+export async function fetchVisibleProjects(
+  auth?: JiraAuth
+): Promise<{ key: string; name: string }[]> {
+  const out: { key: string; name: string }[] = [];
+  let startAt = 0;
+  const maxResults = 50;
+  for (let page = 0; page < 20; page++) {
+    const data = await jiraFetch(
+      `/rest/api/3/project/search?startAt=${startAt}&maxResults=${maxResults}`,
+      { method: "GET" },
+      auth
+    );
+    for (const p of data.values || []) if (p.key) out.push({ key: p.key, name: p.name ?? p.key });
+    if (data.isLast || (data.values?.length ?? 0) < maxResults) break;
+    startAt += maxResults;
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name));
+}

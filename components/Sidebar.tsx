@@ -27,28 +27,53 @@ export default function Sidebar() {
   // click produced no visible response at all and felt like it hadn't
   // registered. Cleared once the pathname actually changes.
   const [navigatingTo, setNavigatingTo] = useState<string | null>(null);
-  const [rescanning, setRescanning] = useState(false);
-  const [rescanNote, setRescanNote] = useState<string | null>(null);
+  const [verifying, setVerifying] = useState(false);
+  const [products, setProducts] = useState<
+    { key: string; jiraName: string; boardId: string | null; exists: boolean; joined: boolean }[] | null
+  >(null);
+  const [verifyNote, setVerifyNote] = useState<string | null>(null);
+  const [joiningKey, setJoiningKey] = useState<string | null>(null);
 
-  // Re-read this user's Jira project access and grant any matching boards.
-  // Has to be self-service: only their own token can see their access.
-  const rescanBoards = async () => {
-    setRescanning(true);
-    setRescanNote(null);
+  // Read the products this person can reach in Jira. Board creation used to be
+  // admin-only, which was circular: no admin can see every Jira project, so
+  // products the admin lacked access to could never be set up. Now whoever has
+  // the access brings the product in.
+  const verifyProducts = async () => {
+    setVerifying(true);
+    setVerifyNote(null);
     try {
-      const res = await fetch("/api/auth/rescan-boards", { method: "POST" });
-      const d = await res.json().catch(() => ({}));
-      if (!res.ok) { setRescanNote(d.error || "Couldn't check"); return; }
-      if ((d.granted ?? []).length > 0) { location.reload(); return; }
-      setRescanNote(
-        (d.noMatch ?? []).length > 0
-          ? `No new products. ${d.noMatch.length} of your Jira projects have no board here.`
-          : "No new products found."
-      );
+      const res = await fetch("/api/auth/my-products");
+      const d = await res.json();
+      if (!res.ok) { setVerifyNote(d.error || "Couldn't read your Jira projects"); return; }
+      setProducts(d.products ?? []);
+      if ((d.products ?? []).length === 0) setVerifyNote("No Jira projects visible to your account.");
     } finally {
-      setRescanning(false);
+      setVerifying(false);
     }
   };
+
+  const joinProduct = async (key: string) => {
+    setJoiningKey(key);
+    try {
+      const res = await fetch("/api/auth/my-products/join", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectKey: key }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { setVerifyNote(d.error || "Couldn't add that product"); return; }
+      // Switch straight to it.
+      await fetch("/api/board/switch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ boardId: d.board.id }),
+      }).catch(() => {});
+      location.href = "/";
+    } finally {
+      setJoiningKey(null);
+    }
+  };
+
   useEffect(() => { setNavigatingTo(null); }, [pathname]);
   const [user, setUser] = useState<{ name: string; email: string | null; role?: string; isAdmin?: boolean; boardId?: string | null; boardName?: string | null } | null>(null);
   const [boards, setBoards] = useState<{ id: string; name: string; jiraProjectKey: string }[]>([]);
@@ -129,16 +154,44 @@ export default function Sidebar() {
                 </button>
               ))}
 
-              <div className="border-t border-railBorder px-[11px] py-[9px] flex flex-col gap-1">
+              <div className="border-t border-railBorder px-[11px] py-[9px] flex flex-col gap-[6px]">
                 <button
-                  onClick={rescanBoards}
-                  disabled={rescanning}
+                  onClick={verifyProducts}
+                  disabled={verifying}
                   className="text-left text-[11.5px] text-railMuted2 hover:text-railText disabled:opacity-50"
                 >
-                  {rescanning ? "Checking Jira…" : "Refresh my products"}
+                  {verifying ? "Checking Jira…" : "Verify my boards"}
                 </button>
-                {rescanNote && (
-                  <span className="text-[10.5px] text-railMuted leading-[1.4]">{rescanNote}</span>
+
+                {verifyNote && (
+                  <span className="text-[10.5px] text-railMuted leading-[1.4]">{verifyNote}</span>
+                )}
+
+                {products && products.filter((p) => !p.joined).length > 0 && (
+                  <div className="flex flex-col gap-[3px] pt-1 max-h-[260px] overflow-y-auto">
+                    <span className="font-mono text-[8.5px] tracking-[.1em] text-railMuted">
+                      AVAILABLE TO YOU
+                    </span>
+                    {products.filter((p) => !p.joined).map((p) => (
+                      <button
+                        key={p.key}
+                        onClick={() => joinProduct(p.key)}
+                        disabled={joiningKey === p.key}
+                        className="text-left px-1 py-[4px] hover:bg-railRaised flex items-center gap-2 disabled:opacity-50"
+                      >
+                        <span className="font-mono text-[9.5px] text-railMuted2 w-[52px] flex-none">{p.key}</span>
+                        <span className="text-[11.5px] text-railText truncate">{p.jiraName}</span>
+                        <span className="ml-auto font-mono text-[9px] text-railMuted flex-none">
+                          {joiningKey === p.key ? "…" : p.exists ? "join" : "add"}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {products && products.filter((p) => !p.joined).length === 0 && !verifyNote && (
+                  <span className="text-[10.5px] text-railMuted">
+                    You already have every product you can see in Jira.
+                  </span>
                 )}
               </div>
             </div>

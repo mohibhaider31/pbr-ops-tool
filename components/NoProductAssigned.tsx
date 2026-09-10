@@ -17,22 +17,40 @@ export default function NoProductAssigned({
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<string | null>(null);
 
-  // Only their own Jira token can see their project access, so this has to be
-  // self-service — an admin can't run it for them.
-  const rescan = async () => {
+  const [products, setProducts] = useState<
+    { key: string; jiraName: string; exists: boolean; joined: boolean }[] | null
+  >(null);
+
+  // Only their own Jira token can see their project access, so this is
+  // necessarily self-service — and whoever has the access is also the person
+  // who can bring the product in, since no admin can see every Jira project.
+  const findProducts = async () => {
     setBusy(true);
     setResult(null);
     try {
-      const res = await fetch("/api/auth/rescan-boards", { method: "POST" });
+      const res = await fetch("/api/auth/my-products");
       const d = await res.json().catch(() => ({}));
-      if (!res.ok) { setResult(d.error || "Couldn't check"); return; }
-      if ((d.granted ?? []).length > 0) { location.reload(); return; }
-      setResult(
-        (d.noMatch ?? []).length > 0
-          ? `You can see ${d.noMatch.length} Jira project${d.noMatch.length === 1 ? "" : "s"}, but none of them have a board here yet.`
-          : "No matching products found for your Jira access."
-      );
+      if (!res.ok) { setResult(d.error || "Couldn't read your Jira projects"); return; }
+      const list = d.products ?? [];
+      setProducts(list);
+      if (list.length === 0) setResult("No Jira projects are visible to your account.");
     } finally {
+      setBusy(false);
+    }
+  };
+
+  const join = async (key: string) => {
+    setBusy(true);
+    try {
+      const res = await fetch("/api/auth/my-products/join", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectKey: key }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { setResult(d.error || "Couldn't add that product"); setBusy(false); return; }
+      location.href = "/";
+    } catch {
       setBusy(false);
     }
   };
@@ -63,14 +81,41 @@ export default function NoProductAssigned({
         </div>
 
         {canRescan && (
-          <div className="flex flex-col gap-2 items-center">
-            <button
-              onClick={rescan}
-              disabled={busy}
-              className="h-[36px] px-4 text-[13px] font-semibold bg-ink text-white disabled:opacity-50"
-            >
-              {busy ? "Checking Jira…" : "Check my Jira access"}
-            </button>
+          <div className="flex flex-col gap-3 items-center w-full">
+            {!products && (
+              <button
+                onClick={findProducts}
+                disabled={busy}
+                className="h-[38px] px-5 text-[13px] font-semibold bg-ink text-white disabled:opacity-50"
+              >
+                {busy ? "Checking Jira…" : "Verify my boards"}
+              </button>
+            )}
+
+            {products && products.length > 0 && (
+              <div className="w-full border border-border bg-white text-left">
+                <div className="px-4 py-[9px] border-b border-borderLight font-mono text-[9px] tracking-[.1em] text-muted3">
+                  YOUR JIRA PRODUCTS
+                </div>
+                <div className="max-h-[260px] overflow-y-auto">
+                  {products.map((p) => (
+                    <button
+                      key={p.key}
+                      onClick={() => join(p.key)}
+                      disabled={busy}
+                      className="w-full px-4 py-[10px] border-b border-borderFaint last:border-b-0 flex items-center gap-3 hover:bg-cream transition-colors disabled:opacity-50"
+                    >
+                      <span className="font-mono text-[11px] text-key w-[62px] flex-none text-left">{p.key}</span>
+                      <span className="text-[12.5px] truncate text-left flex-1">{p.jiraName}</span>
+                      <span className="font-mono text-[9.5px] text-muted3 flex-none">
+                        {p.joined ? "open" : p.exists ? "join" : "add"}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {result && <span className="text-[12px] text-muted2 max-w-[380px]">{result}</span>}
           </div>
         )}
