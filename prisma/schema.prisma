@@ -177,6 +177,9 @@ model Person {
   deactivatedAt DateTime?
   // TOTP second factor for local accounts. The secret is AES-256-GCM encrypted
   // at rest (see lib/totp.ts) so a database leak alone can't mint valid codes.
+  // When we last read this person's Jira project access to auto-grant boards.
+  // Only their own token can see this, so it can't be done before first login.
+  boardsScannedAt DateTime?
   totpSecret     String?
   totpEnabledAt  DateTime?
   totpBackupCodes String[] @default([]) // bcrypt hashes; each removed once used

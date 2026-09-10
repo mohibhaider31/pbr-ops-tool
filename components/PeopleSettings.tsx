@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { Fragment, useEffect, useState, useCallback } from "react";
 import { avatarColor, initials } from "@/lib/avatar";
 import { ROLE_LABEL, type BoardRole } from "@/lib/permissions";
 import { useViewer } from "@/lib/useViewer";
@@ -29,6 +29,9 @@ const ROLES: BoardRole[] = ["PO", "BA", "DEVELOPER", "VIEWER"];
 export default function PeopleSettings() {
   const { viewer, loading: viewerLoading } = useViewer();
   const [people, setPeople] = useState<Person[] | null>(null);
+  const [allBoards, setAllBoards] = useState<{ id: string; key: string; name: string }[]>([]);
+  const [editingBoards, setEditingBoards] = useState<string | null>(null);
+  const [addBoardId, setAddBoardId] = useState("");
   const [toast, setToast] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [addEmail, setAddEmail] = useState("");
@@ -42,6 +45,14 @@ export default function PeopleSettings() {
   }, []);
 
   useEffect(() => {
+    // Boards an admin can grant. Assignment is the access control, so it needs
+    // to be explicit here rather than implied by the current board.
+    fetch("/api/boards")
+      .then((r) => r.json())
+      .then((d) => Array.isArray(d?.boards)
+        ? setAllBoards(d.boards.map((b: any) => ({ id: b.id, key: b.jiraProjectKey, name: b.name })))
+        : null)
+      .catch(() => {});
     load();
   }, [load]);
 
@@ -129,6 +140,33 @@ export default function PeopleSettings() {
     const d = await res.json().catch(() => ({}));
     if (!res.ok) { showToast(d.error || "Couldn't change status"); return; }
     showToast(active ? `${p.name} reactivated` : `${p.name} deactivated`);
+    load();
+  };
+
+  // Grant or revoke a board for one person, without leaving this screen.
+  const grantBoard = async (p: Person, boardId: string, role = "DEVELOPER") => {
+    const b = allBoards.find((x) => x.id === boardId);
+    if (!b) return;
+    setPeople((prev) => prev?.map((x) => x.id === p.id
+      ? { ...x, boards: [...(x.boards ?? []), { id: b.id, key: b.key, name: b.name, role }] } : x) || prev);
+    const res = await fetch(`/api/boards/${boardId}/members`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ personId: p.id, role }),
+    });
+    if (!res.ok) showToast("Couldn't grant that board");
+    load();
+  };
+
+  const revokeBoard = async (p: Person, boardId: string) => {
+    setPeople((prev) => prev?.map((x) => x.id === p.id
+      ? { ...x, boards: (x.boards ?? []).filter((b) => b.id !== boardId) } : x) || prev);
+    const res = await fetch(`/api/boards/${boardId}/members`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ personId: p.id }),
+    });
+    if (!res.ok) showToast("Couldn't remove that board");
     load();
   };
 
@@ -264,8 +302,8 @@ export default function PeopleSettings() {
               <span></span>
             </div>
             {people.map((p) => (
+              <Fragment key={p.id}>
               <div
-                key={p.id}
                 className="group grid gap-0 px-[30px] items-center h-[54px] border-b border-borderLight hover:bg-cream transition-colors"
                 style={{ gridTemplateColumns: "minmax(200px,1fr) 130px 110px 80px 80px 40px" }}
               >
@@ -347,7 +385,11 @@ export default function PeopleSettings() {
                     {p.source === "jira" ? "JIRA" : "MANUAL"}
                   </span>
                 </div>
-                <div className="flex items-center gap-1 flex-wrap justify-end mr-2">
+                <button
+                  onClick={() => { setEditingBoards(editingBoards === p.id ? null : p.id); setAddBoardId(""); }}
+                  title="Edit which products this person can see"
+                  className="flex items-center gap-1 flex-wrap justify-end mr-2 hover:opacity-80"
+                >
                   {(p.boards ?? []).length === 0 ? (
                     <span
                       className="font-mono text-[8.5px] tracking-[.06em] text-amberText border border-amberBorder px-[5px] py-[1px]"
@@ -366,7 +408,7 @@ export default function PeopleSettings() {
                       </span>
                     ))
                   )}
-                </div>
+                </button>
 
                 <div className="flex justify-end items-center gap-2">
                   {p.authType === "local" && (
@@ -396,6 +438,55 @@ export default function PeopleSettings() {
                   )}
                 </div>
               </div>
+
+              {editingBoards === p.id && (
+                <div className="px-5 pb-4 pt-1 bg-cream/40 border-b border-borderFaint flex flex-col gap-2">
+                  <span className="font-mono text-[9px] tracking-[.09em] text-muted3">
+                    PRODUCTS {p.name.toUpperCase()} CAN SEE
+                  </span>
+                  {(p.boards ?? []).length === 0 ? (
+                    <span className="text-[12px] text-amberText">
+                      None — they see &ldquo;no product assigned&rdquo; when they sign in.
+                    </span>
+                  ) : (
+                    (p.boards ?? []).map((b) => (
+                      <div key={b.id} className="flex items-center gap-3 text-[12.5px]">
+                        <span className="font-mono text-[11px] text-key">{b.key}</span>
+                        <span className="text-muted2">{b.name}</span>
+                        <span className="font-mono text-[10px] text-muted3">{b.role}</span>
+                        <button
+                          onClick={() => revokeBoard(p, b.id)}
+                          className="ml-auto text-muted4 hover:text-accent text-[11px]"
+                        >
+                          remove
+                        </button>
+                      </div>
+                    ))
+                  )}
+                  <div className="flex gap-2 items-center pt-1">
+                    <select
+                      value={addBoardId}
+                      onChange={(e) => setAddBoardId(e.target.value)}
+                      className="h-[28px] px-2 border border-border text-[12px] bg-white"
+                    >
+                      <option value="">Grant a product…</option>
+                      {allBoards
+                        .filter((b) => !(p.boards ?? []).some((x) => x.id === b.id))
+                        .map((b) => (
+                          <option key={b.id} value={b.id}>{b.key} — {b.name}</option>
+                        ))}
+                    </select>
+                    <button
+                      onClick={() => { if (addBoardId) { grantBoard(p, addBoardId); setAddBoardId(""); } }}
+                      disabled={!addBoardId}
+                      className="h-[28px] px-3 text-[12px] font-semibold bg-ink text-white disabled:opacity-40"
+                    >
+                      Grant
+                    </button>
+                  </div>
+                </div>
+              )}
+              </Fragment>
             ))}
             <div className="px-[30px] py-[18px] pb-10 text-[12px] text-muted2">
               Roles: PO can approve to Ready For Dev · BA can send for PO review · Developer can review &amp; comment · Viewer is read-only. Admins manage this page.

@@ -1,11 +1,42 @@
 "use client";
 
+import { useState } from "react";
+
 // Shown when a signed-in user belongs to no board.
 //
 // Board membership IS the access control, so having none is a legitimate state
 // — not an error. Previously it produced 36 different "no board" API failures
 // and an app that looked broken.
-export default function NoProductAssigned({ name }: { name?: string | null }) {
+export default function NoProductAssigned({
+  name,
+  canRescan,
+}: {
+  name?: string | null;
+  canRescan?: boolean;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+
+  // Only their own Jira token can see their project access, so this has to be
+  // self-service — an admin can't run it for them.
+  const rescan = async () => {
+    setBusy(true);
+    setResult(null);
+    try {
+      const res = await fetch("/api/auth/rescan-boards", { method: "POST" });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { setResult(d.error || "Couldn't check"); return; }
+      if ((d.granted ?? []).length > 0) { location.reload(); return; }
+      setResult(
+        (d.noMatch ?? []).length > 0
+          ? `You can see ${d.noMatch.length} Jira project${d.noMatch.length === 1 ? "" : "s"}, but none of them have a board here yet.`
+          : "No matching products found for your Jira access."
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="flex-1 flex items-center justify-center p-8">
       <div className="max-w-[460px] flex flex-col gap-4 text-center">
@@ -30,6 +61,19 @@ export default function NoProductAssigned({ name }: { name?: string | null }) {
             they do, refresh and your product will appear here.
           </p>
         </div>
+
+        {canRescan && (
+          <div className="flex flex-col gap-2 items-center">
+            <button
+              onClick={rescan}
+              disabled={busy}
+              className="h-[36px] px-4 text-[13px] font-semibold bg-ink text-white disabled:opacity-50"
+            >
+              {busy ? "Checking Jira…" : "Check my Jira access"}
+            </button>
+            {result && <span className="text-[12px] text-muted2 max-w-[380px]">{result}</span>}
+          </div>
+        )}
 
         <a href="/api/auth/logout" className="text-[12.5px] text-muted2 hover:text-key">
           Sign out

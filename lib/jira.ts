@@ -229,32 +229,61 @@ export async function fetchActiveStories(opts?: JiraProjectOpts): Promise<JiraIs
 export type JiraUser = { accountId: string; name: string; email: string | null; avatarUrl: string | null };
 
 export async function fetchProjectMembers(auth?: JiraAuth, opts?: JiraProjectOpts): Promise<JiraUser[]> {
-  // assignable users search for the project; paginate through results.
-  const users: any[] = [];
-  let startAt = 0;
-  const maxResults = 100;
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
+  // Derived from who has actually WORKED on the project — assignees and
+  // reporters on its issues — rather than Jira's assignable-users endpoint.
+  //
+  // Two reasons. First, /user/assignable/search needs the read:jira-user
+  // scope, which this app doesn't request; calling it returns
+  // "401 scope does not match". Issue search only needs read:jira-work, which
+  // we already have, so this works without asking every user to re-consent.
+  //
+  // Second, assignable-users returns everyone who *could* be assigned an issue
+  // — ~197 people on RAE against ~12 real contributors — and Sync grants a
+  // board membership to each one. Contributors is both the cheaper query and
+  // the more accurate answer.
+  const projectKey = opts?.projectKey || DEFAULT_PROJECT;
+  const seen = new Map<string, JiraUser>();
+
+  let nextPageToken: string | undefined;
+  let pages = 0;
+  do {
     const data = await jiraFetch(
-      `/rest/api/3/user/assignable/search?project=${opts?.projectKey || DEFAULT_PROJECT}&startAt=${startAt}&maxResults=${maxResults}`,
-      undefined,
+      `/rest/api/3/search/jql`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          jql: `project = ${projectKey} ORDER BY updated DESC`,
+          maxResults: 100,
+          fields: ["assignee", "reporter"],
+          ...(nextPageToken ? { nextPageToken } : {}),
+        }),
+      },
       auth
     );
-    const batch = Array.isArray(data) ? data : [];
-    users.push(...batch);
-    if (batch.length < maxResults) break;
-    startAt += maxResults;
-    if (startAt > 1000) break; // safety
-  }
-  return users
-    .filter((u) => u.accountType === "atlassian") // real people, not apps
-    .map((u) => ({
-      accountId: u.accountId,
-      name: u.displayName,
-      email: u.emailAddress ?? null,
-      avatarUrl: u.avatarUrls?.["48x48"] ?? null,
-    }));
+
+    for (const issue of data.issues || []) {
+      for (const field of ["assignee", "reporter"] as const) {
+        const u = issue.fields?.[field];
+        if (!u?.accountId) continue;
+        if (u.accountType && u.accountType !== "atlassian") continue; // skip apps
+        if (!seen.has(u.accountId)) {
+          seen.set(u.accountId, {
+            accountId: u.accountId,
+            name: u.displayName,
+            email: u.emailAddress ?? null,
+            avatarUrl: u.avatarUrls?.["48x48"] ?? null,
+          });
+        }
+      }
+    }
+
+    nextPageToken = data.isLast ? undefined : data.nextPageToken;
+    pages++;
+  } while (nextPageToken && pages < 10); // ~1000 issues is ample coverage
+
+  return Array.from(seen.values()).sort((a, b) => a.name.localeCompare(b.name));
 }
+
 
 // --- Poker: write agreed story points back to Jira ---
 // Writes the confirmed estimate to this instance's Story Points field
@@ -734,4 +763,28 @@ export async function verifyJiraProject(
     if (msg.includes("404")) return { ok: false, error: "No such project, or you can't access it" };
     return { ok: false, error: msg.slice(0, 200) };
   }
+}
+
+/**
+ * Project keys the AUTHENTICATED user can browse.
+ *
+ * Uses /project/search with their own token, so it reflects that person's real
+ * Jira access. Only needs read:jira-work — deliberately not the user-directory
+ * endpoints, which require read:jira-user (a scope this app doesn't hold).
+ */
+export async function fetchVisibleProjectKeys(auth?: JiraAuth): Promise<string[]> {
+  const keys: string[] = [];
+  let startAt = 0;
+  const maxResults = 50;
+  for (let page = 0; page < 20; page++) {
+    const data = await jiraFetch(
+      `/rest/api/3/project/search?startAt=${startAt}&maxResults=${maxResults}`,
+      { method: "GET" },
+      auth
+    );
+    for (const p of data.values || []) if (p.key) keys.push(p.key);
+    if (data.isLast || (data.values?.length ?? 0) < maxResults) break;
+    startAt += maxResults;
+  }
+  return keys;
 }

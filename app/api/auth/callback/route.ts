@@ -4,6 +4,7 @@ import { exchangeCode, fetchMe, fetchCloudId } from "@/lib/atlassian-oauth";
 import { prisma } from "@/lib/prisma";
 import { createSession, getSession, sessionCookieString } from "@/lib/session";
 import { logAuthEvent, ipFrom } from "@/lib/authAudit";
+import { provisionBoardsFromJira } from "@/lib/boardProvision";
 
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
@@ -58,6 +59,14 @@ export async function GET(req: NextRequest) {
         refreshToken,
         accessExpiresAt: Date.now() + expiresIn * 1000,
       });
+      // Now that we have their token we can see which Jira projects they can
+      // browse, and grant the matching boards.
+      await provisionBoardsFromJira(
+        currentPerson.id,
+        { accessToken, cloudId },
+        { force: true }
+      ).catch(() => {});
+
       await logAuthEvent({
         kind: "ATLASSIAN_LINKED", actorName: currentPerson.name, actorId: me.accountId,
         subject: currentPerson.email, authType: "atlassian", ip: ipFrom(req),
@@ -106,6 +115,15 @@ export async function GET(req: NextRequest) {
         where: { id: known.id },
         data: { accountId: me.accountId, authType: "atlassian", avatarUrl: me.avatarUrl },
       });
+    }
+
+    // First sign-in: read their Jira project access and grant matching boards.
+    // This can only be done with THEIR token, which is why it can't happen at
+    // invite time. Adds only — never removes an admin's decision.
+    const personForScan =
+      known ?? (await prisma.person.findUnique({ where: { accountId: me.accountId } }));
+    if (personForScan) {
+      await provisionBoardsFromJira(personForScan.id, { accessToken, cloudId }).catch(() => {});
     }
 
     const id = await createSession({

@@ -39,7 +39,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (boards.length === 0) {
     return (
       <div className="flex h-screen w-full overflow-hidden bg-paper text-ink font-sans">
-        <NoProductAssigned name={session.name} />
+        <NoProductAssigned name={session.name} canRescan={session.authType !== "local"} />
       </div>
     );
   }

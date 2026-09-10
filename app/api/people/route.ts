@@ -47,14 +47,21 @@ export async function GET() {
   });
 }
 
-// Manually add a person by email AND make them a member of the current board.
+// Manually add a person by email and grant them a board.
+//
+// The board is explicit rather than "whichever one the admin is looking at" —
+// assignment is the access control, so it shouldn't be a side effect of
+// navigation. Passing no boardId is allowed; the person then sees the
+// "no product assigned" screen until someone grants them one.
 export async function POST(req: Request) {
   const viewer = await getViewer();
   if (!viewer?.isAdmin) return NextResponse.json({ error: "forbidden" }, { status: 403 });
   const board = await getCurrentBoard();
   if (!board) return NextResponse.json({ error: "no board" }, { status: 400 });
 
-  const { name, email, role }: { name?: string; email: string; role?: string } = await req.json();
+  const {
+    name, email, role, boardId,
+  }: { name?: string; email: string; role?: string; boardId?: string } = await req.json();
   if (!email?.trim()) return NextResponse.json({ error: "Email required" }, { status: 400 });
 
   const person = await prisma.person.upsert({
@@ -62,9 +69,10 @@ export async function POST(req: Request) {
     create: { email: email.trim(), name: name?.trim() || email.trim(), source: "manual" },
     update: {},
   });
+  const targetBoardId = boardId || board.id;
   await prisma.boardMembership.upsert({
-    where: { personId_boardId: { personId: person.id, boardId: board.id } },
-    create: { personId: person.id, boardId: board.id, role: (role as any) || "DEVELOPER" },
+    where: { personId_boardId: { personId: person.id, boardId: targetBoardId } },
+    create: { personId: person.id, boardId: targetBoardId, role: (role as any) || "DEVELOPER" },
     update: {},
   });
   // Explicit projection. Returning the raw row here leaked passwordHash to the
