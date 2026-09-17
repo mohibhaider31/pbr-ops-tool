@@ -44,6 +44,7 @@ export async function POST(_req: Request, { params }: { params: { code: string; 
     type: "SET_STORY_SCORE",
     jiraKey: item.jiraKey,
     payload: { kind: "invest", value: investScore },
+    actorAccountId: viewer.accountId,
   });
   await enqueueOp({
     boardId: session.boardId,
@@ -53,6 +54,7 @@ export async function POST(_req: Request, { params }: { params: { code: string; 
       author: viewer.name,
       text: `INVEST score (team average): ${investScore}/6, from ${n} scorer${n === 1 ? "" : "s"} in Planning Poker.`,
     },
+    actorAccountId: viewer.accountId,
   });
   waitUntil(runPending(5).then(() => {}).catch(() => {}));
 

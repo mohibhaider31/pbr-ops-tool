@@ -152,3 +152,54 @@ export async function getJiraAuth(): Promise<{ accessToken: string; cloudId: str
   if (!s.accessToken || !s.cloudId) return undefined;
   return { accessToken: s.accessToken, cloudId: s.cloudId };
 }
+
+/**
+ * Jira credentials for a GIVEN person, not the current request's user.
+ *
+ * The outbox worker runs outside any request, but must write to Jira as the
+ * person who performed the action — otherwise writes execute under the
+ * app-level API token, which belongs to one individual and may have no access
+ * to the project in question.
+ *
+ * Refreshes the access token if it has expired, exactly as getSession() does.
+ * Returns undefined if that person has no usable session, in which case the
+ * caller decides whether to fall back.
+ */
+export async function jiraAuthForAccount(
+  accountId: string
+): Promise<{ accessToken: string; cloudId: string } | undefined> {
+  const row = await prisma.authSession.findFirst({
+    where: {
+      accountId,
+      authType: "atlassian",
+      refreshToken: { not: null },
+      accessToken: { not: null },
+      cloudId: { not: null },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  if (!row?.cloudId || !row.accessToken) return undefined;
+
+  const BUFFER_MS = 2 * 60 * 1000;
+  const expiresAt = row.accessExpiresAt?.getTime() ?? 0;
+
+  if (Date.now() + BUFFER_MS < expiresAt) {
+    return { accessToken: row.accessToken, cloudId: row.cloudId };
+  }
+
+  // Expired — refresh and persist the rotated tokens.
+  try {
+    const refreshed = await refreshTokens(row.refreshToken as string);
+    await prisma.authSession.update({
+      where: { id: row.id },
+      data: {
+        accessToken: refreshed.accessToken,
+        refreshToken: refreshed.refreshToken,
+        accessExpiresAt: new Date(Date.now() + refreshed.expiresIn * 1000),
+      },
+    });
+    return { accessToken: refreshed.accessToken, cloudId: row.cloudId };
+  } catch {
+    return undefined;
+  }
+}

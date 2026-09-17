@@ -44,12 +44,17 @@ export async function POST(req: Request, { params }: { params: { code: string; i
   );
   const alignmentScore = analysis.alignmentScore;
 
-  const jobs: { boardId: string; type: OutboxType; jiraKey: string; payload: Record<string, unknown> }[] = [
+  const jobs: {
+    boardId: string; type: OutboxType; jiraKey: string;
+    payload: Record<string, unknown>; actorAccountId?: string | null;
+  }[] = [
     {
       boardId: item.session.boardId,
       type: "SET_STORY_POINTS",
       jiraKey: item.jiraKey,
       payload: { points },
+      // Write as the organizer, not as whoever owns the app's API token.
+      actorAccountId: viewer.accountId,
     },
   ];
   if (alignmentScore != null) {
@@ -60,6 +65,7 @@ export async function POST(req: Request, { params }: { params: { code: string; i
       type: "SET_STORY_SCORE",
       jiraKey: item.jiraKey,
       payload: { kind: "alignment", value: alignmentScore },
+      actorAccountId: viewer.accountId,
     });
     jobs.push({
       boardId: item.session.boardId,
@@ -69,6 +75,7 @@ export async function POST(req: Request, { params }: { params: { code: string; i
         author: viewer.name,
         text: `Estimate accepted via Planning Poker: ${points} story points. Team alignment: ${alignmentScore}/5 (${analysis.spreadLabel}).`,
       },
+      actorAccountId: viewer.accountId,
     });
   }
 

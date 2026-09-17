@@ -59,6 +59,7 @@ export async function POST(_req: Request, { params }: { params: { code: string; 
     type: "SET_STORY_SCORE",
     jiraKey: item.jiraKey,
     payload: { kind: "rediscussion", value: rediscussionScore },
+    actorAccountId: viewer.accountId,
   });
   waitUntil(runPending(5).then(() => {}).catch(() => {}));
 
@@ -72,6 +73,7 @@ export async function POST(_req: Request, { params }: { params: { code: string; 
         author: viewer.name,
         text: `Team flagged this story as still needing refinement (${yes}/${total} in Planning Poker). Re-discussion score: ${rediscussionScore}/5.`,
       },
+      actorAccountId: viewer.accountId,
     });
     waitUntil(runPending(5).then(() => {}).catch(() => {}));
   }

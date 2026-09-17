@@ -419,6 +419,12 @@ model JiraSyncState {
 model OutboxJob {
   id            String    @id @default(cuid())
   boardId       String
+  // Who performed the action. The worker executes the Jira write as THIS
+  // person, using their stored OAuth token. Without it every write ran under
+  // the app-level API token (one individual's personal token), so any write on
+  // a project that account couldn't access failed — and successful ones were
+  // misattributed to them.
+  actorAccountId String?
   type          String    // SET_STORY_POINTS | ADD_COMMENT | TRANSITION_ISSUE
   jiraKey       String    // for display + per-story status in the UI
   payload       Json

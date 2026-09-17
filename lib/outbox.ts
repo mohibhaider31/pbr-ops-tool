@@ -14,6 +14,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { setStoryPoints, addJiraComment, transitionIssue, setStoryScore, type ScoreKind } from "@/lib/jira";
+import { jiraAuthForAccount } from "@/lib/session";
 
 export type OutboxType = "SET_STORY_POINTS" | "ADD_COMMENT" | "TRANSITION_ISSUE" | "SET_STORY_SCORE";
 
@@ -29,6 +30,7 @@ export function enqueueOp(job: {
   type: OutboxType;
   jiraKey: string;
   payload: Record<string, unknown>;
+  actorAccountId?: string | null;
 }) {
   return prisma.outboxJob.create({
     data: {
@@ -36,6 +38,7 @@ export function enqueueOp(job: {
       type: job.type,
       jiraKey: job.jiraKey,
       payload: job.payload as any,
+      actorAccountId: job.actorAccountId ?? null,
     },
   });
 }
@@ -45,7 +48,10 @@ export function enqueueOp(job: {
  * inside a transaction - it's a single round-trip rather than one per job.
  */
 export function enqueueManyOp(
-  jobs: { boardId: string; type: OutboxType; jiraKey: string; payload: Record<string, unknown> }[]
+  jobs: {
+    boardId: string; type: OutboxType; jiraKey: string;
+    payload: Record<string, unknown>; actorAccountId?: string | null;
+  }[]
 ) {
   return prisma.outboxJob.createMany({
     data: jobs.map((j) => ({
@@ -53,6 +59,7 @@ export function enqueueManyOp(
       type: j.type,
       jiraKey: j.jiraKey,
       payload: j.payload as any,
+      actorAccountId: j.actorAccountId ?? null,
     })),
   });
 }
@@ -67,19 +74,36 @@ export async function enqueue(job: {
   return enqueueOp(job);
 }
 
-async function execute(job: { type: string; jiraKey: string; payload: any }) {
+async function execute(job: {
+  type: string; jiraKey: string; payload: any; actorAccountId: string | null;
+}) {
+  // Write to Jira AS the person who performed the action. Passing no auth makes
+  // jiraFetch fall back to the app-level API token, which belongs to one
+  // individual — so any write on a project that account can't reach fails, and
+  // successful ones are misattributed. Only fall back when we genuinely have no
+  // session for the actor (e.g. they signed out before the retry).
+  const auth = job.actorAccountId
+    ? await jiraAuthForAccount(job.actorAccountId)
+    : undefined;
+
+  if (job.actorAccountId && !auth) {
+    throw new Error(
+      "No usable Atlassian session for the person who made this change — they need to sign in again for it to sync"
+    );
+  }
+
   switch (job.type) {
     case "SET_STORY_POINTS":
-      await setStoryPoints(job.jiraKey, Number(job.payload.points));
+      await setStoryPoints(job.jiraKey, Number(job.payload.points), auth);
       return;
     case "ADD_COMMENT":
-      await addJiraComment(job.jiraKey, String(job.payload.author ?? "PBR Ops"), String(job.payload.text));
+      await addJiraComment(job.jiraKey, String(job.payload.author ?? "PBR Ops"), String(job.payload.text), auth);
       return;
     case "TRANSITION_ISSUE":
-      await transitionIssue(job.jiraKey, String(job.payload.to));
+      await transitionIssue(job.jiraKey, String(job.payload.to), auth);
       return;
     case "SET_STORY_SCORE":
-      await setStoryScore(job.jiraKey, job.payload.kind as ScoreKind, Number(job.payload.value));
+      await setStoryScore(job.jiraKey, job.payload.kind as ScoreKind, Number(job.payload.value), auth);
       return;
     default:
       throw new Error(`Unknown outbox job type: ${job.type}`);
@@ -98,7 +122,7 @@ export async function runPending(limit = 10): Promise<{ ran: number; failed: num
     where: { status: "PENDING", nextAttemptAt: { lte: new Date() } },
     orderBy: { nextAttemptAt: "asc" },
     take: limit,
-    select: { id: true, type: true, jiraKey: true, payload: true, attempts: true, maxAttempts: true },
+    select: { id: true, type: true, jiraKey: true, payload: true, attempts: true, maxAttempts: true, actorAccountId: true },
   });
 
   for (const job of due) {

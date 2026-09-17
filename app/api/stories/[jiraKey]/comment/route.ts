@@ -46,6 +46,7 @@ export async function POST(
         type: "ADD_COMMENT",
         jiraKey: params.jiraKey,
         payload: { author, text },
+        actorAccountId: session?.accountId ?? null,
       });
       waitUntil(runPending(5).then(() => {}).catch(() => {}));
     }
