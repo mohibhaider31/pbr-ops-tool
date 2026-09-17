@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getViewer } from "@/lib/viewer";
+import { getSession } from "@/lib/session";
 import { can } from "@/lib/permissions";
 import { generateCode } from "@/lib/poker";
 import { getCurrentBoard } from "@/lib/board";
@@ -12,7 +13,11 @@ export async function POST() {
   if (!viewer) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const board = await getCurrentBoard();
   if (!board) return NextResponse.json({ error: "no board" }, { status: 400 });
-  if (!can({ role: board.role ?? "VIEWER", isAdmin: board.isAdmin }, "poker_vote"))
+  // poker_vote touches only our own data, so an unlinked account is fine here —
+  // but pass authType anyway so this call site behaves consistently if the
+  // capability table ever changes.
+  const sess = await getSession();
+  if (!can({ role: board.role ?? "VIEWER", isAdmin: board.isAdmin, authType: sess?.authType }, "poker_vote"))
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
   // Opportunistic cleanup: remove sessions untouched for over 7 days so old
@@ -22,8 +27,10 @@ export async function POST() {
     const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     // Close out abandoned sessions rather than deleting them — the estimation
     // history is worth keeping even when nobody formally ended the session.
+    // Scoped to THIS board. Without the filter, starting a session on one
+    // product silently closed abandoned sessions on every other product.
     await prisma.pokerSession.updateMany({
-      where: { updatedAt: { lt: cutoff }, endedAt: null },
+      where: { boardId: board.id, updatedAt: { lt: cutoff }, endedAt: null },
       data: { endedAt: new Date(), currentItemId: null },
     });
   } catch {

@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
+import { getJiraAuth } from "@/lib/session";
 
 import { getCurrentBoard } from "@/lib/board";
 import { prisma } from "@/lib/prisma";
@@ -21,7 +22,11 @@ export async function GET() {
 
     // Pull active stories from Jira and index by key for fresh summary/status.
     // Served from the local read model; Jira refreshed in the background.
-    waitUntil(refreshIfStale(board.id, board.jiraProjectKey, undefined));
+    // Sync as the requesting user. Passing undefined fell back to the app's
+    // API token, which belongs to one individual — so a board for a project
+    // that account can't reach would never refresh and would look permanently
+    // empty to the people who CAN see it.
+    waitUntil(refreshIfStale(board.id, board.jiraProjectKey, await getJiraAuth()));
     const stories = await localActiveStories(board.id, ["Done", "Canceled", "Frozen"]);
     const storyByKey = new Map(stories.map((s) => [s.key, s]));
 

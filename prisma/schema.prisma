@@ -24,7 +24,7 @@ enum StoryStage {
 model Story {
   id            String     @id @default(cuid())
   boardId       String     @default("") // scoped to a board (backfilled to RAE)
-  jiraKey       String     @unique // e.g. RAE-1234
+  jiraKey       String     // e.g. RAE-1234 — unique per BOARD, not globally
   priorityOrder Int        @default(0) // lower = higher priority, set by PO drag/reorder
   stage         StoryStage @default(BACKLOG)
   pbrDoneAt     DateTime?
@@ -35,6 +35,10 @@ model Story {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Scoped per board, matching every other board-scoped model. A global
+  // @unique on jiraKey invited findUnique({ where: { jiraKey } }) lookups that
+  // silently crossed products.
+  @@unique([boardId, jiraKey])
   @@index([boardId, priorityOrder]) // backlog list: scoped + ordered in one index
   @@index([boardId])
 }

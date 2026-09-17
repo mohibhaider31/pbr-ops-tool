@@ -17,17 +17,23 @@ export async function GET(_req: Request, { params }: { params: { jiraKey: string
   const jira = await localIssue(board.id, params.jiraKey);
 
   // Ensure a Story row exists (Jira-assigned stories may not be in the backlog).
-  let story = await prisma.story.findUnique({
-    where: { jiraKey: params.jiraKey },
+  // Board-scoped. jiraKey is globally unique on Story, so looking it up by key
+  // alone would happily return a story belonging to a different product — and
+  // priorityOrder was being computed across all boards too.
+  let story = await prisma.story.findFirst({
+    where: { jiraKey: params.jiraKey, boardId: board.id },
     include: { assignees: true, comments: { orderBy: { createdAt: "asc" } } },
   });
   if (!story) {
-    const maxOrder = await prisma.story.aggregate({ _max: { priorityOrder: true } });
+    const maxOrder = await prisma.story.aggregate({
+      where: { boardId: board.id },
+      _max: { priorityOrder: true },
+    });
     await prisma.story.create({
       data: { boardId: board.id, jiraKey: params.jiraKey, priorityOrder: (maxOrder._max.priorityOrder || 0) + 1 },
     });
-    story = await prisma.story.findUnique({
-      where: { jiraKey: params.jiraKey },
+    story = await prisma.story.findFirst({
+      where: { jiraKey: params.jiraKey, boardId: board.id },
       include: { assignees: true, comments: { orderBy: { createdAt: "asc" } } },
     });
   }
