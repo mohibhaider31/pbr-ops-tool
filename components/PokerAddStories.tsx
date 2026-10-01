@@ -40,6 +40,21 @@ export default function PokerAddStories({
     return base.filter((s) => s.key.toLowerCase().includes(q) || s.summary.toLowerCase().includes(q));
   }, [stories, query, existing]);
 
+  // Force a Jira re-sync. The picker reads a local projection for speed, so a
+  // failed or stale sync shows as "no stories" even when Jira has plenty.
+  const syncNow = async () => {
+    setSyncing(true);
+    try {
+      await fetch("/api/jira/sync", { method: "POST" });
+      const res = await fetch("/api/poker/ready-stories");
+      const d = await res.json();
+      setStories(d.stories ?? []);
+      setDiagnostic(d.diagnostic ?? null);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const toggle = (k: string) => setPicked((p) => { const n = new Set(p); n.has(k) ? n.delete(k) : n.add(k); return n; });
 
   const submit = async () => {
