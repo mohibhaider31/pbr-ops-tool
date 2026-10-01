@@ -17,11 +17,17 @@ export default function PokerAddStories({
   const [query, setQuery] = useState("");
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
+  const [diagnostic, setDiagnostic] = useState<any>(null);
+  const [syncing, setSyncing] = useState(false);
 
   useEffect(() => {
     fetch("/api/poker/ready-stories")
       .then((r) => r.json())
-      .then((d) => (d.error ? setError(d.error) : setStories(d.stories)))
+      .then((d) => {
+        if (d.error) { setError(d.error); return; }
+        setStories(d.stories ?? []);
+        setDiagnostic(d.diagnostic ?? null);
+      })
       .catch((e) => setError(e.message));
   }, []);
 
@@ -66,7 +72,43 @@ export default function PokerAddStories({
         <div className="flex-1 overflow-y-auto">
           {error && <div className="p-6 text-sm text-accent">{error}</div>}
           {!stories && !error && <div className="p-6 text-sm text-muted2 font-mono">Loading Ready-For-Dev stories…</div>}
-          {stories && filtered.length === 0 && <div className="p-6 text-sm text-muted2 text-center">{query ? "No matches." : "No more Ready-For-Dev stories to add."}</div>}
+          {stories && filtered.length === 0 && (
+            <div className="p-6 flex flex-col items-center gap-3 text-center">
+              <span className="text-[13px] text-muted2">
+                {query ? "No matches." : "No Ready-For-Dev stories found."}
+              </span>
+
+              {/* The picker reads a cached projection of Jira for speed, so a
+                  failed or stale sync shows up here as an empty list. Say so,
+                  and offer the fix, instead of leaving it a mystery. */}
+              {!query && (
+                <div className="flex flex-col items-center gap-2">
+                  {diagnostic && (
+                    <div className="text-[11.5px] text-muted3 leading-[1.6] max-w-[420px]">
+                      Looking for status{" "}
+                      <span className="font-mono text-ink">{diagnostic.configuredStatus}</span> ·{" "}
+                      {diagnostic.projectedIssues} issues cached
+                      {diagnostic.syncError && (
+                        <span className="block text-accent mt-1">Sync error: {diagnostic.syncError}</span>
+                      )}
+                      {Array.isArray(diagnostic.availableStatuses) && diagnostic.availableStatuses.length > 0 && (
+                        <span className="block mt-1">
+                          Statuses present: {diagnostic.availableStatuses.slice(0, 6).join(", ")}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  <button
+                    onClick={syncNow}
+                    disabled={syncing}
+                    className="h-[32px] px-4 text-[12.5px] font-semibold border border-border hover:border-ink disabled:opacity-50"
+                  >
+                    {syncing ? "Syncing from Jira…" : "Sync from Jira now"}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
           {filtered.map((s) => {
             const on = picked.has(s.key);
             return (

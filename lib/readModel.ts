@@ -162,3 +162,14 @@ export async function isProjectionEmpty(boardId: string): Promise<boolean> {
   const n = await prisma.jiraIssue.count({ where: { boardId } });
   return n === 0;
 }
+
+/** Distinct statuses present in the projection — for diagnosing an empty picker. */
+export async function distinctStatuses(boardId: string): Promise<string[]> {
+  const rows = await prisma.jiraIssue.groupBy({
+    by: ["status"],
+    where: { boardId },
+    _count: { _all: true },
+    orderBy: { _count: { status: "desc" } },
+  });
+  return rows.map((r) => `${r.status} (${r._count._all})`);
+}

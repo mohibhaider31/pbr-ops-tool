@@ -61,34 +61,51 @@ export async function syncBoardIssues(
     const issues = await fetchAllStories({ projectKey }, auth);
 
     if (issues.length > 0) {
-      // Replace the board's projection atomically. Two statements inside one
-      // transaction (a DELETE and a single multi-row INSERT) rather than a
-      // raw ON CONFLICT upsert - Prisma handles the text[]/float typing
-      // correctly, and readers see either the old snapshot or the new one,
-      // never a partial state.
-      await prisma.$transaction([
-        prisma.jiraIssue.deleteMany({ where: { boardId } }),
-        prisma.jiraIssue.createMany({
-          data: issues.map((it) => ({
-            boardId,
-            jiraKey: it.key,
-            summary: it.summary ?? it.key,
-            status: it.status ?? "Unknown",
-            statusCategory: it.statusCategory ?? null,
-            issueType: it.issueType ?? null,
-            storyPoints:
-              typeof it.storyPoints === "number"
-                ? it.storyPoints
-                : it.storyPoints != null
-                  ? Number(it.storyPoints) || null
-                  : null,
-            assigneeAccountId: it.assigneeAccountId ?? null,
-            assigneeName: it.assignee ?? null,
-            labels: it.labels ?? [],
-          })),
+      // Replace the board's projection.
+      //
+      // Previously this was ONE transaction containing a delete plus a single
+      // 700-row insert. Over Supabase's transaction-mode pooler a large
+      // multi-statement transaction can fail or time out, and when it did the
+      // projection was left empty while the error went unseen — which is how
+      // the poker picker ended up showing no stories despite Jira having 25
+      // Ready For Dev.
+      //
+      // Now: delete, then insert in chunks, each its own statement. The brief
+      // window where the projection is partial is a fair trade for a sync that
+      // actually completes, and reads self-heal if they come up empty.
+      await prisma.jiraIssue.deleteMany({ where: { boardId } });
+
+      const CHUNK = 200;
+      const rows = issues.map((it) => ({
+        boardId,
+        jiraKey: it.key,
+        summary: it.summary ?? it.key,
+        status: it.status ?? "Unknown",
+        statusCategory: it.statusCategory ?? null,
+        issueType: it.issueType ?? null,
+        storyPoints:
+          typeof it.storyPoints === "number"
+            ? it.storyPoints
+            : it.storyPoints != null
+              ? Number(it.storyPoints) || null
+              : null,
+        assigneeAccountId: it.assigneeAccountId ?? null,
+        assigneeName: it.assignee ?? null,
+        labels: it.labels ?? [],
+      }));
+
+      let inserted = 0;
+      for (let i = 0; i < rows.length; i += CHUNK) {
+        const res = await prisma.jiraIssue.createMany({
+          data: rows.slice(i, i + CHUNK),
           skipDuplicates: true,
-        }),
-      ]);
+        });
+        inserted += res.count;
+      }
+
+      if (inserted === 0) {
+        throw new Error(`Fetched ${issues.length} issues from Jira but inserted 0 into the projection`);
+      }
     }
 
     await prisma.jiraSyncState.update({
